@@ -2,28 +2,20 @@ import logging
 from textwrap import dedent
 
 import typer
-from lunicyto.utils import download_data
 
+from lunicyto.utils import download_data, explore
 
 app = typer.Typer(
     help=dedent("""\
-        First, make sure you have `uv installed
-        <https://docs.astral.sh/uv/getting-started/installation/>`_.
+        Lunicyto — cervical cell classification (SIPaKMeD).
 
-        Recommended:
-
-        install in editable mode: ``uv tool install --editable lunicyto@.``
-
-        Alternatively,
-
-        install current state: ``uv tool install lunicyto@.``
-
-        upgrade to current state: ``uv tool upgrade lunicyto@.``
+        Installation: uv tool install --editable lunicyto@.
     """),
     no_args_is_help=True,
 )
 
 app.command("download")(download_data.main)
+app.command("info")(explore.main)
 
 
 def main() -> None:
