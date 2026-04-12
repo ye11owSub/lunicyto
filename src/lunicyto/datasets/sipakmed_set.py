@@ -1,5 +1,11 @@
 from pathlib import Path
 from typing import Iterable
+from pydantic import BaseModel
+
+
+class DatasetInfo(BaseModel):
+    total: int
+    class_items_count: dict[str, int]
 
 CLASSES: dict[str, int] = {
     "im_Superficial-Intermediate": 0,
@@ -49,14 +55,9 @@ def collect_samples(src: str | Path) -> list[tuple[Path, int]]:
     return samples
 
 
-def dataset_info(data_dir: str | Path) -> dict[str, int | str | Iterable[str]]:
+def dataset_info(data_dir: str | Path) -> DatasetInfo:
     samples = collect_samples(data_dir)
     labels = [s[1] for s in samples]
-    per_class = {CLASS_NAMES[i]: labels.count(i) for i in range(len(CLASSES))}
+    class_items_count = {CLASS_NAMES[i]: labels.count(i) for i in range(len(CLASSES))}
 
-    return {
-        "total": len(samples),
-        "per_class": per_class,
-        "class_names": CLASS_NAMES,
-        "num_classes": len(CLASSES),
-    }
+    return DatasetInfo(total=len(samples), class_items_count=class_items_count)
