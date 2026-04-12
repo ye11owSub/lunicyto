@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 from kaggle.api.kaggle_api_extended import KaggleApi
 import typer
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def download_kaggle_dataset(
     dataset: str,
-    output_dir: Optional[Path] = None,
+    output_dir: None | Path = None,
     unzip: bool = True,
 ) -> Path:
     if output_dir is None:
@@ -44,7 +44,7 @@ def main(
         typer.Argument(help="Kaggle dataset identifier (e.g., 'user/dataset-name')"),
     ] = "prahladmehandiratta/cervical-cancer-largest-dataset-sipakmed",
     output_dir: Annotated[
-        Optional[Path],
+        None | Path,
         typer.Option(
             "--output",
             "-o",
