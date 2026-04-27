@@ -1,10 +1,9 @@
+import logging
 from pathlib import Path
 from typing import Annotated
 
-from kaggle.api.kaggle_api_extended import KaggleApi
 import typer
-
-import logging
+from kaggle.api.kaggle_api_extended import KaggleApi
 
 logger = logging.getLogger(__name__)
 

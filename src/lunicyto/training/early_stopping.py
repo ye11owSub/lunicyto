@@ -1,5 +1,4 @@
 class EarlyStopping:
-
     def __init__(self, patience: int = 10, mode: str = "max", min_delta: float = 1e-4):
         assert mode in ("min", "max")
         self.patience = patience
@@ -25,5 +24,3 @@ class EarlyStopping:
             self.counter += 1
 
         return self.counter >= self.patience
-
-

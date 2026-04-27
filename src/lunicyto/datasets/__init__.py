@@ -1,8 +1,8 @@
 from lunicyto.datasets.sipakmed import (
+    CLASS_NAMES,
     collect_samples,
     dataset_info,
     get_dataloaders,
-    CLASS_NAMES,
 )
 
 __all__ = [

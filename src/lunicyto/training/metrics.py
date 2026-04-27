@@ -23,9 +23,7 @@ def compute_metrics(
     f1_macro = f1_score(y_true, y_pred, average="macro", zero_division=0)
     f1_per = f1_score(y_true, y_pred, average=None, zero_division=0).tolist()
     cm = confusion_matrix(y_true, y_pred)
-    report = classification_report(
-        y_true, y_pred, target_names=class_names, zero_division=0
-    )
+    report = classification_report(y_true, y_pred, target_names=class_names, zero_division=0)
 
     return {
         "accuracy": float(acc),

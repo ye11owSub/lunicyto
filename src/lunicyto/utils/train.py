@@ -1,11 +1,11 @@
 from pathlib import Path
-from lunicyto.datasets.sipakmed import get_dataloaders, dataset_info, CLASS_NAMES
+
+import typer
+
+from lunicyto.datasets.sipakmed import CLASS_NAMES, dataset_info, get_dataloaders
 from lunicyto.models.hybrid_vit_cnn import build_model
 from lunicyto.training.trainer import Trainer
 from lunicyto.utils.models import Config
-
-
-import typer
 
 
 def train(config: Config, data_dir: None | Path, output_dir: None | Path) -> None:

@@ -2,7 +2,6 @@ import logging
 import math
 import time
 from pathlib import Path
-from typing import Optional
 
 import matplotlib.pyplot as plt
 import torch
@@ -52,7 +51,6 @@ def mixup_criterion(
 
 
 class WarmupCosineScheduler(torch.optim.lr_scheduler.LambdaLR):
-
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
@@ -62,16 +60,13 @@ class WarmupCosineScheduler(torch.optim.lr_scheduler.LambdaLR):
         def lr_lambda(epoch: int) -> float:
             if epoch < warmup_epochs:
                 return float(epoch + 1) / float(max(1, warmup_epochs))
-            progress = float(epoch - warmup_epochs) / float(
-                max(1, total_epochs - warmup_epochs)
-            )
+            progress = float(epoch - warmup_epochs) / float(max(1, total_epochs - warmup_epochs))
             return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
 
         super().__init__(optimizer, lr_lambda)
 
 
 class Trainer:
-
     def __init__(
         self,
         model: nn.Module,
@@ -88,7 +83,7 @@ class Trainer:
         mixup_alpha: float = 0.4,
         grad_clip: float = 1.0,
         early_stopping_patience: int = 10,
-        class_names: Optional[list] = None,
+        class_names: list | None = None,
     ):
         self.device = _get_device()
         logger.info(f"Device: {self.device}")
@@ -107,10 +102,7 @@ class Trainer:
         self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 
         backbone_params = [p for n, p in model.named_parameters() if n.startswith("backbone")]
-        head_params = [
-            p for n, p in model.named_parameters()
-            if not n.startswith("backbone")
-        ]
+        head_params = [p for n, p in model.named_parameters() if not n.startswith("backbone")]
         self.optimizer = torch.optim.AdamW(
             [
                 {"params": backbone_params, "lr": learning_rate * backbone_lr_scale},
@@ -123,9 +115,7 @@ class Trainer:
             self.optimizer, warmup_epochs=warmup_epochs, total_epochs=epochs
         )
 
-        self.early_stopping = EarlyStopping(
-            patience=early_stopping_patience, mode="max"
-        )
+        self.early_stopping = EarlyStopping(patience=early_stopping_patience, mode="max")
 
         self.use_amp = self.device.type == "cuda"
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
