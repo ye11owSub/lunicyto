@@ -3,6 +3,7 @@ from pathlib import Path
 import typer
 
 from lunicyto.datasets.sipakmed import CLASS_NAMES, dataset_info, get_dataloaders
+from lunicyto.models.baseline import build_baseline_model
 from lunicyto.models.hybrid_vit_cnn import build_model
 from lunicyto.training.trainer import Trainer
 from lunicyto.utils.models import Config
@@ -31,18 +32,28 @@ def train(config: Config, data_dir: None | Path, output_dir: None | Path) -> Non
         seed=config.data.seed,
     )
 
-    typer.echo(f"Backbone: {config.model.backbone}")
-    model = build_model(
-        num_classes=config.model.num_classes,
-        backbone=config.model.backbone,
-        transformer_dim=config.model.transformer_dim,
-        transformer_heads=config.model.transformer_heads,
-        transformer_layers=config.model.transformer_layers,
-        mlp_ratio=config.model.mlp_ratio,
-        dropout=config.model.dropout,
-        drop_path_rate=config.model.drop_path_rate,
-        pretrained=config.model.pretrained,
-    )
+    typer.echo(f"Backbone: {config.model.backbone}  |  model_type: {config.model.model_type}")
+
+    if config.model.model_type == "baseline":
+        model = build_baseline_model(
+            num_classes=config.model.num_classes,
+            backbone=config.model.backbone,
+            dropout=config.model.dropout,
+            pretrained=config.model.pretrained,
+        )
+    else:
+        model = build_model(
+            num_classes=config.model.num_classes,
+            backbone=config.model.backbone,
+            transformer_dim=config.model.transformer_dim,
+            transformer_heads=config.model.transformer_heads,
+            transformer_layers=config.model.transformer_layers,
+            mlp_ratio=config.model.mlp_ratio,
+            dropout=config.model.dropout,
+            drop_path_rate=config.model.drop_path_rate,
+            pretrained=config.model.pretrained,
+        )
+
     n_params = sum(p.numel() for p in model.parameters()) / 1e6
     typer.echo(f"Параметры модели: {n_params:.1f}M\n")
 
@@ -69,6 +80,8 @@ def train(config: Config, data_dir: None | Path, output_dir: None | Path) -> Non
     typer.echo("\n=== Финальные результаты (тест) ===")
     typer.echo(f"Accuracy : {test_metrics['accuracy'] * 100:.2f}%")
     typer.echo(f"F1 macro : {test_metrics['f1_macro'] * 100:.2f}%")
+    if "auc_roc_macro" in test_metrics:
+        typer.echo(f"AUC macro: {test_metrics['auc_roc_macro'] * 100:.2f}%")
     typer.echo(f"Результаты сохранены в: {config.output.dir}")
 
 

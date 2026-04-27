@@ -49,6 +49,18 @@ class TransformerBlock(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
+    def forward_with_attn(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Единственный проход: возвращает (output, attention_weights).
+
+        В отличие от наивного варианта (считать attention отдельно, потом вызвать forward),
+        здесь attention вычисляется ровно один раз — те же веса, что участвуют в residual.
+        """
+        normed = self.norm1(x)
+        attn_out, weights = self.attn(normed, normed, normed, need_weights=True)
+        x = x + self.drop_path(attn_out)
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        return x, weights
+
 
 class HybridViTCNN(nn.Module):
     def __init__(
@@ -140,6 +152,11 @@ class HybridViTCNN(nn.Module):
         return self.head(cls_out)
 
     def get_attention_maps(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """Возвращает attention weights каждого трансформер-блока.
+
+        Использует forward_with_attn — один проход на блок, не двойной.
+        Возвращает список тензоров формы (B, num_heads, seq_len, seq_len).
+        """
         cnn_feats = self.backbone(x)
         B = cnn_feats.shape[0]
         cnn_feats = cnn_feats.flatten(2).transpose(1, 2)
@@ -150,10 +167,8 @@ class HybridViTCNN(nn.Module):
 
         attn_maps = []
         for blk in self.transformer_blocks:
-            normed = blk.norm1(x_seq)
-            _, weights = blk.attn(normed, normed, normed, need_weights=True)
+            x_seq, weights = blk.forward_with_attn(x_seq)
             attn_maps.append(weights.detach())
-            x_seq = blk(x_seq)
 
         return attn_maps
 

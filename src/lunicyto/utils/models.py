@@ -1,5 +1,6 @@
 import tomllib
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -20,6 +21,7 @@ class DataConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
+    model_type: Literal["hybrid", "baseline"] = "hybrid"
     num_classes: int = Field(5, ge=1)
     backbone: str = Field("convnext_base")
     transformer_dim: int = Field(512, ge=64)

@@ -8,30 +8,85 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix,
     f1_score,
+    recall_score,
+    roc_auc_score,
 )
 
 
 def compute_metrics(
     y_true: list[int],
     y_pred: list[int],
-    class_names: None | list[str] = None,
+    class_names: list[str] | None = None,
+    y_score: np.ndarray | None = None,
 ) -> dict:
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
+    """Вычисляет полный набор метрик классификации.
 
-    acc = accuracy_score(y_true, y_pred)
-    f1_macro = f1_score(y_true, y_pred, average="macro", zero_division=0)
-    f1_per = f1_score(y_true, y_pred, average=None, zero_division=0).tolist()
-    cm = confusion_matrix(y_true, y_pred)
-    report = classification_report(y_true, y_pred, target_names=class_names, zero_division=0)
+    Args:
+        y_true:      истинные метки.
+        y_pred:      предсказанные метки.
+        class_names: названия классов (для отчёта).
+        y_score:     матрица вероятностей (N, C) после softmax.
+                     Нужна для AUC-ROC; если None — AUC не считается.
 
-    return {
+    Returns:
+        dict с ключами: accuracy, f1_macro, f1_per_class,
+        sensitivity_per_class, specificity_per_class,
+        confusion_matrix, report, и опционально
+        auc_roc_macro, auc_roc_per_class.
+    """
+    y_true_np = np.array(y_true)
+    y_pred_np = np.array(y_pred)
+    n_classes = len(class_names) if class_names else int(y_true_np.max()) + 1
+    labels = list(range(n_classes))
+
+    acc = accuracy_score(y_true_np, y_pred_np)
+    f1_macro = f1_score(y_true_np, y_pred_np, average="macro", zero_division=0)
+    f1_per = f1_score(y_true_np, y_pred_np, average=None, zero_division=0, labels=labels).tolist()
+
+    # Sensitivity = Recall per class  (TP / (TP + FN))
+    sensitivity = recall_score(
+        y_true_np, y_pred_np, average=None, zero_division=0, labels=labels
+    ).tolist()
+
+    # Specificity per class = TN / (TN + FP)  в схеме one-vs-rest
+    cm = confusion_matrix(y_true_np, y_pred_np, labels=labels)
+    specificity_per_class: list[float] = []
+    for i in range(n_classes):
+        tp = cm[i, i]
+        fn = cm[i, :].sum() - tp
+        fp = cm[:, i].sum() - tp
+        tn = cm.sum() - tp - fn - fp
+        spec = float(tn) / float(tn + fp) if (tn + fp) > 0 else 0.0
+        specificity_per_class.append(spec)
+
+    report = classification_report(y_true_np, y_pred_np, target_names=class_names, zero_division=0)
+
+    result: dict = {
         "accuracy": float(acc),
         "f1_macro": float(f1_macro),
         "f1_per_class": f1_per,
+        "sensitivity_per_class": sensitivity,
+        "specificity_per_class": specificity_per_class,
         "confusion_matrix": cm,
         "report": report,
     }
+
+    # AUC-ROC требует вероятностных оценок
+    if y_score is not None:
+        try:
+            auc_macro = roc_auc_score(
+                y_true_np, y_score, multi_class="ovr", average="macro", labels=labels
+            )
+            auc_per_class = [
+                float(roc_auc_score((y_true_np == i).astype(int), y_score[:, i]))
+                for i in range(n_classes)
+            ]
+            result["auc_roc_macro"] = float(auc_macro)
+            result["auc_roc_per_class"] = auc_per_class
+        except ValueError:
+            pass  # не все классы представлены — пропускаем
+
+    return result
 
 
 def plot_confusion_matrix(
