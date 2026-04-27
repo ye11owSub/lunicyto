@@ -3,7 +3,7 @@ from textwrap import dedent
 
 import typer
 
-from lunicyto.utils import download_data, explore, train
+from lunicyto.utils import cross_validate, download_data, explore, train
 
 app = typer.Typer(
     help=dedent("""\
@@ -17,6 +17,7 @@ app = typer.Typer(
 app.command("download")(download_data.main)
 app.command("info")(explore.main)
 app.command("train")(train.main)
+app.command("cv")(cross_validate.main)
 
 
 def main() -> None:

@@ -8,6 +8,7 @@ test_split = 0.15
 seed = 42
 
 [model]
+model_type = "hybrid"
 backbone = "convnext_base"
 transformer_dim = 768
 transformer_heads = 12

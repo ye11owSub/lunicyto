@@ -2,9 +2,9 @@ import logging
 import math
 import time
 from pathlib import Path
-from typing import Optional
 
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -52,7 +52,6 @@ def mixup_criterion(
 
 
 class WarmupCosineScheduler(torch.optim.lr_scheduler.LambdaLR):
-
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
@@ -62,16 +61,13 @@ class WarmupCosineScheduler(torch.optim.lr_scheduler.LambdaLR):
         def lr_lambda(epoch: int) -> float:
             if epoch < warmup_epochs:
                 return float(epoch + 1) / float(max(1, warmup_epochs))
-            progress = float(epoch - warmup_epochs) / float(
-                max(1, total_epochs - warmup_epochs)
-            )
+            progress = float(epoch - warmup_epochs) / float(max(1, total_epochs - warmup_epochs))
             return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
 
         super().__init__(optimizer, lr_lambda)
 
 
 class Trainer:
-
     def __init__(
         self,
         model: nn.Module,
@@ -88,7 +84,8 @@ class Trainer:
         mixup_alpha: float = 0.4,
         grad_clip: float = 1.0,
         early_stopping_patience: int = 10,
-        class_names: Optional[list] = None,
+        class_names: list | None = None,
+        use_tta: bool = True,
     ):
         self.device = _get_device()
         logger.info(f"Device: {self.device}")
@@ -103,14 +100,12 @@ class Trainer:
         self.mixup_alpha = mixup_alpha
         self.grad_clip = grad_clip
         self.class_names = class_names or [str(i) for i in range(5)]
+        self.use_tta = use_tta
 
         self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 
         backbone_params = [p for n, p in model.named_parameters() if n.startswith("backbone")]
-        head_params = [
-            p for n, p in model.named_parameters()
-            if not n.startswith("backbone")
-        ]
+        head_params = [p for n, p in model.named_parameters() if not n.startswith("backbone")]
         self.optimizer = torch.optim.AdamW(
             [
                 {"params": backbone_params, "lr": learning_rate * backbone_lr_scale},
@@ -123,9 +118,7 @@ class Trainer:
             self.optimizer, warmup_epochs=warmup_epochs, total_epochs=epochs
         )
 
-        self.early_stopping = EarlyStopping(
-            patience=early_stopping_patience, mode="max"
-        )
+        self.early_stopping = EarlyStopping(patience=early_stopping_patience, mode="max")
 
         self.use_amp = self.device.type == "cuda"
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
@@ -150,7 +143,7 @@ class Trainer:
             t0 = time.time()
 
             train_loss, train_acc = self._train_epoch(epoch)
-            val_loss, val_acc, val_f1 = self._val_epoch(epoch)
+            val_loss, val_acc, val_f1, val_auc = self._val_epoch(epoch)
 
             self.scheduler.step()
 
@@ -164,7 +157,8 @@ class Trainer:
             logger.info(
                 f"Epoch {epoch:3d}/{self.epochs} | "
                 f"train loss={train_loss:.4f} acc={train_acc:.4f} | "
-                f"val loss={val_loss:.4f} acc={val_acc:.4f} f1={val_f1:.4f} | "
+                f"val loss={val_loss:.4f} acc={val_acc:.4f} "
+                f"f1={val_f1:.4f} auc={val_auc:.4f} | "
                 f"lr={lr:.2e} | {elapsed:.1f}s"
             )
 
@@ -173,6 +167,7 @@ class Trainer:
             self.writer.add_scalar("Accuracy/train", train_acc, epoch)
             self.writer.add_scalar("Accuracy/val", val_acc, epoch)
             self.writer.add_scalar("F1_macro/val", val_f1, epoch)
+            self.writer.add_scalar("AUC_macro/val", val_auc, epoch)
             self.writer.add_scalar("LR", lr, epoch)
 
             if val_acc > self.best_val_acc:
@@ -187,12 +182,16 @@ class Trainer:
 
         self.writer.close()
 
-        test_metrics = self._evaluate(self.test_loader, phase="test")
+        tta_label = " (с TTA)" if self.use_tta else ""
+        logger.info(f"Финальная оценка на тесте{tta_label}...")
+        test_metrics = self._evaluate(self.test_loader, phase="test", use_tta=self.use_tta)
         self._save_results(test_metrics)
 
         logger.info("\nResults:")
-        logger.info(f"Accuracy: {test_metrics['accuracy']:.4f}")
-        logger.info(f"F1 macro: {test_metrics['f1_macro']:.4f}")
+        logger.info(f"Accuracy:  {test_metrics['accuracy']:.4f}")
+        logger.info(f"F1 macro:  {test_metrics['f1_macro']:.4f}")
+        if "auc_roc_macro" in test_metrics:
+            logger.info(f"AUC macro: {test_metrics['auc_roc_macro']:.4f}")
         logger.info(f"\n{test_metrics['report']}")
 
         return test_metrics
@@ -242,10 +241,11 @@ class Trainer:
         return total_loss / total, correct / total
 
     @torch.no_grad()
-    def _val_epoch(self, epoch: int) -> tuple[float, float, float]:
+    def _val_epoch(self, epoch: int) -> tuple[float, float, float, float]:
         self.model.eval()
         total_loss = 0.0
-        all_preds: list[int] = []
+        total = 0
+        all_probs: list[np.ndarray] = []
         all_labels: list[int] = []
 
         for imgs, labels in self.val_loader:
@@ -256,29 +256,56 @@ class Trainer:
                 logits = self.model(imgs)
                 loss = self.criterion(logits, labels)
 
-            total_loss += loss.item() * imgs.size(0)
-            preds = logits.argmax(dim=1)
-            all_preds.extend(preds.cpu().tolist())
+            batch_size = imgs.size(0)
+            total_loss += loss.item() * batch_size  # сумма по сэмплам
+            total += batch_size
+
+            probs = torch.softmax(logits, dim=1)
+            all_probs.append(probs.cpu().numpy())
             all_labels.extend(labels.cpu().tolist())
 
-        metrics = compute_metrics(all_labels, all_preds, self.class_names)
-        n = len(self.val_loader)
-        return total_loss / n, metrics["accuracy"], metrics["f1_macro"]
+        y_score = np.concatenate(all_probs, axis=0)
+        y_pred = y_score.argmax(axis=1).tolist()
+        metrics = compute_metrics(all_labels, y_pred, self.class_names, y_score=y_score)
+        auc = metrics.get("auc_roc_macro", 0.0)
+        return total_loss / total, metrics["accuracy"], metrics["f1_macro"], auc
 
     @torch.no_grad()
-    def _evaluate(self, loader: DataLoader, phase: str = "test") -> dict:
+    def _evaluate(
+        self,
+        loader: DataLoader,
+        phase: str = "test",
+        use_tta: bool = False,
+    ) -> dict:
+        """Оценка на loader.
+
+        use_tta=True — применяет 4 флип-аугментации и усредняет softmax,
+        что даёт +0.5–1% accuracy без дополнительного обучения.
+        """
         self.model.eval()
-        all_preds: list[int] = []
+        all_probs: list[np.ndarray] = []
         all_labels: list[int] = []
+
+        # dims для каждой TTA-аугментации; [] = оригинал без флипа
+        tta_flips: list[list[int]] = [[], [-1], [-2], [-1, -2]] if use_tta else [[]]
 
         for imgs, labels in tqdm(loader, desc=f"Evaluate ({phase})", leave=False):
             imgs = imgs.to(self.device, non_blocking=True)
-            logits = self.model(imgs)
-            preds = logits.argmax(dim=1)
-            all_preds.extend(preds.cpu().tolist())
-            all_labels.extend(labels.cpu().tolist())
 
-        return compute_metrics(all_labels, all_preds, self.class_names)
+            batch_probs: list[torch.Tensor] = []
+            for dims in tta_flips:
+                aug = torch.flip(imgs, dims=dims) if dims else imgs
+                with torch.autocast(device_type=self.device.type, enabled=self.use_amp):
+                    logits = self.model(aug)
+                batch_probs.append(torch.softmax(logits, dim=1))
+
+            avg_probs = torch.stack(batch_probs).mean(0)
+            all_probs.append(avg_probs.cpu().numpy())
+            all_labels.extend(labels.tolist())
+
+        y_score = np.concatenate(all_probs, axis=0)
+        y_pred = y_score.argmax(axis=1).tolist()
+        return compute_metrics(all_labels, y_pred, self.class_names, y_score=y_score)
 
     def _save_checkpoint(self, epoch: int, val_acc: float) -> None:
         ckpt_path = self.output_dir / "best_model.pth"
@@ -314,7 +341,25 @@ class Trainer:
 
         report_path = self.output_dir / "test_report.txt"
         with open(report_path, "w", encoding="utf-8") as f:
-            f.write(f"Accuracy: {test_metrics['accuracy']:.4f}\n")
-            f.write(f"F1 macro: {test_metrics['f1_macro']:.4f}\n\n")
-            f.write(test_metrics["report"])
+            f.write(f"Accuracy:  {test_metrics['accuracy']:.4f}\n")
+            f.write(f"F1 macro:  {test_metrics['f1_macro']:.4f}\n")
+            if "auc_roc_macro" in test_metrics:
+                f.write(f"AUC macro: {test_metrics['auc_roc_macro']:.4f}\n")
+            f.write("\n--- Sensitivity (Recall) per class ---\n")
+            for name, val in zip(
+                self.class_names, test_metrics.get("sensitivity_per_class", []), strict=False
+            ):
+                f.write(f"  {name:35s}: {val:.4f}\n")
+            f.write("\n--- Specificity per class ---\n")
+            for name, val in zip(
+                self.class_names, test_metrics.get("specificity_per_class", []), strict=False
+            ):
+                f.write(f"  {name:35s}: {val:.4f}\n")
+            if "auc_roc_per_class" in test_metrics:
+                f.write("\n--- AUC-ROC per class ---\n")
+                for name, val in zip(
+                    self.class_names, test_metrics["auc_roc_per_class"], strict=False
+                ):
+                    f.write(f"  {name:35s}: {val:.4f}\n")
+            f.write(f"\n{test_metrics['report']}")
         logger.info(f"Отчёт сохранён: {report_path}")

@@ -1,12 +1,10 @@
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import numpy as np
+import torchvision.transforms as T
 from PIL import Image
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import DataLoader, Dataset
-import torchvision.transforms as T
-
 
 CLASSES: dict[str, int] = {
     "im_Superficial-Intermediate": 0,
@@ -26,12 +24,13 @@ CLASS_NAMES = [
 
 _IMAGE_EXTENSIONS = {".bmp", ".png", ".jpg", ".jpeg"}
 
-def collect_samples(root: str | Path) -> List[Tuple[Path, int]]:
+
+def collect_samples(root: str | Path) -> list[tuple[Path, int]]:
     root = Path(root).resolve()
     if not root.exists():
         raise FileNotFoundError(f"dir not found: {root}")
 
-    samples: List[Tuple[Path, int]] = []
+    samples: list[tuple[Path, int]] = []
 
     for class_folder, label in CLASSES.items():
         class_dir = root / class_folder
@@ -48,32 +47,35 @@ def get_transform(img_size: int, is_train: bool) -> T.Compose:
     normalize = T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
     if is_train:
-        return T.Compose([
-            T.Resize((img_size + 32, img_size + 32)),
-            T.RandomCrop(img_size),
-            T.RandomHorizontalFlip(0.5),
-            T.RandomVerticalFlip(0.5),
-            T.RandomRotation(30),
-            T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
-            T.RandomGrayscale(p=0.05),
-            T.RandAugment(num_ops=2, magnitude=9),
+        return T.Compose(
+            [
+                T.Resize((img_size + 32, img_size + 32)),
+                T.RandomCrop(img_size),
+                T.RandomHorizontalFlip(0.5),
+                T.RandomVerticalFlip(0.5),
+                T.RandomRotation(30),
+                T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
+                T.RandomGrayscale(p=0.05),
+                T.RandAugment(num_ops=2, magnitude=9),
+                T.ToTensor(),
+                normalize,
+                T.RandomErasing(p=0.25, scale=(0.02, 0.15)),
+            ]
+        )
+    return T.Compose(
+        [
+            T.Resize((img_size, img_size)),
             T.ToTensor(),
             normalize,
-            T.RandomErasing(p=0.25, scale=(0.02, 0.15)),
-        ])
-    return T.Compose([
-        T.Resize((img_size, img_size)),
-        T.ToTensor(),
-        normalize,
-    ])
+        ]
+    )
 
 
 class SipakmedDataset(Dataset):
-
     def __init__(
         self,
-        samples: List[Tuple[Path, int]],
-        transform: Optional[T.Compose] = None,
+        samples: list[tuple[Path, int]],
+        transform: T.Compose | None = None,
     ):
         self.samples = samples
         self.transform = transform
@@ -89,19 +91,19 @@ class SipakmedDataset(Dataset):
         return img, label
 
     @property
-    def labels(self) -> List[int]:
+    def labels(self) -> list[int]:
         return [s[1] for s in self.samples]
 
 
 def split_samples(
-    samples: List[Tuple[Path, int]],
+    samples: list[tuple[Path, int]],
     val_split: float = 0.15,
     test_split: float = 0.15,
     seed: int = 42,
-) -> Tuple[
-    List[Tuple[Path, int]],
-    List[Tuple[Path, int]],
-    List[Tuple[Path, int]],
+) -> tuple[
+    list[tuple[Path, int]],
+    list[tuple[Path, int]],
+    list[tuple[Path, int]],
 ]:
 
     labels = np.array([s[1] for s in samples])
@@ -112,9 +114,7 @@ def split_samples(
 
     val_frac_of_trainval = val_split / (1.0 - test_split)
     labels_tv = labels[train_val_idx]
-    sss_val = StratifiedShuffleSplit(
-        n_splits=1, test_size=val_frac_of_trainval, random_state=seed
-    )
+    sss_val = StratifiedShuffleSplit(n_splits=1, test_size=val_frac_of_trainval, random_state=seed)
     rel_train_idx, rel_val_idx = next(sss_val.split(np.zeros(len(train_val_idx)), labels_tv))
 
     train_idx = train_val_idx[rel_train_idx]
@@ -135,7 +135,7 @@ def get_dataloaders(
     val_split: float = 0.15,
     test_split: float = 0.15,
     seed: int = 42,
-) -> Tuple[DataLoader, DataLoader, DataLoader]:
+) -> tuple[DataLoader, DataLoader, DataLoader]:
 
     all_samples = collect_samples(data_dir)
     train_s, val_s, test_s = split_samples(

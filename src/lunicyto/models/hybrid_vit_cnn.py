@@ -1,10 +1,9 @@
+import timm
 import torch
 import torch.nn as nn
-import timm
 
 
 class DropPath(nn.Module):
-
     def __init__(self, drop_prob: float = 0.0):
         super().__init__()
         self.drop_prob = drop_prob
@@ -29,9 +28,7 @@ class TransformerBlock(nn.Module):
     ):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
-        self.attn = nn.MultiheadAttention(
-            dim, num_heads, dropout=dropout, batch_first=True
-        )
+        self.attn = nn.MultiheadAttention(dim, num_heads, dropout=dropout, batch_first=True)
         self.norm2 = nn.LayerNorm(dim)
         hidden_dim = int(dim * mlp_ratio)
         self.mlp = nn.Sequential(
@@ -51,6 +48,18 @@ class TransformerBlock(nn.Module):
         # FFN с residual + stochastic depth
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
+
+    def forward_with_attn(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Единственный проход: возвращает (output, attention_weights).
+
+        В отличие от наивного варианта (считать attention отдельно, потом вызвать forward),
+        здесь attention вычисляется ровно один раз — те же веса, что участвуют в residual.
+        """
+        normed = self.norm1(x)
+        attn_out, weights = self.attn(normed, normed, normed, need_weights=True)
+        x = x + self.drop_path(attn_out)
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        return x, weights
 
 
 class HybridViTCNN(nn.Module):
@@ -96,16 +105,18 @@ class HybridViTCNN(nn.Module):
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, transformer_layers)]
-        self.transformer_blocks = nn.ModuleList([
-            TransformerBlock(
-                dim=transformer_dim,
-                num_heads=transformer_heads,
-                mlp_ratio=mlp_ratio,
-                dropout=dropout,
-                drop_path=dpr[i],
-            )
-            for i in range(transformer_layers)
-        ])
+        self.transformer_blocks = nn.ModuleList(
+            [
+                TransformerBlock(
+                    dim=transformer_dim,
+                    num_heads=transformer_heads,
+                    mlp_ratio=mlp_ratio,
+                    dropout=dropout,
+                    drop_path=dpr[i],
+                )
+                for i in range(transformer_layers)
+            ]
+        )
         self.norm = nn.LayerNorm(transformer_dim)
 
         self.head = nn.Sequential(
@@ -122,7 +133,7 @@ class HybridViTCNN(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # CNN: (B, 3, H, W) → (B, C, h, w)
         cnn_feats = self.backbone(x)
-        B, C, h, w = cnn_feats.shape
+        B = cnn_feats.shape[0]
 
         cnn_feats = cnn_feats.flatten(2).transpose(1, 2)
 
@@ -141,8 +152,13 @@ class HybridViTCNN(nn.Module):
         return self.head(cls_out)
 
     def get_attention_maps(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """Возвращает attention weights каждого трансформер-блока.
+
+        Использует forward_with_attn — один проход на блок, не двойной.
+        Возвращает список тензоров формы (B, num_heads, seq_len, seq_len).
+        """
         cnn_feats = self.backbone(x)
-        B, C, h, w = cnn_feats.shape
+        B = cnn_feats.shape[0]
         cnn_feats = cnn_feats.flatten(2).transpose(1, 2)
         x_seq = self.proj(cnn_feats)
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -151,10 +167,8 @@ class HybridViTCNN(nn.Module):
 
         attn_maps = []
         for blk in self.transformer_blocks:
-            normed = blk.norm1(x_seq)
-            _, weights = blk.attn(normed, normed, normed, need_weights=True)
+            x_seq, weights = blk.forward_with_attn(x_seq)
             attn_maps.append(weights.detach())
-            x_seq = blk(x_seq)
 
         return attn_maps
 
