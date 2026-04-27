@@ -1,0 +1,33 @@
+[data]
+dir = "data/sipakmed"
+img_size = 224
+batch_size = 32
+num_workers = 4
+val_split = 0.15
+test_split = 0.15
+seed = 42
+
+[model]
+backbone = "convnext_base"
+transformer_dim = 768
+transformer_heads = 12
+transformer_layers = 4
+mlp_ratio = 4.0
+dropout = 0.3
+drop_path_rate = 0.1
+pretrained = true
+num_classes = 5
+
+[training]
+epochs = 50
+learning_rate = 2.0e-4
+backbone_lr_scale = 0.1
+weight_decay = 1.0e-2
+warmup_epochs = 5
+label_smoothing = 0.1
+mixup_alpha = 0.4
+grad_clip = 1.0
+early_stopping_patience = 10
+
+[output]
+dir = "runs/experiment_001"
