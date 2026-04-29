@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import typer
-from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
+from sklearn.model_selection import GroupShuffleSplit, StratifiedGroupKFold
 from torch.utils.data import DataLoader
 
 from lunicyto.datasets.sipakmed import (
@@ -34,21 +34,26 @@ logger = logging.getLogger(__name__)
 def cross_validate(config: Config, n_folds: int = 5) -> dict:
     """Запускает n_folds-кратную стратифицированную кросс-валидацию.
 
+    Использует StratifiedGroupKFold: клетки из одного исходного снимка
+    никогда не попадают одновременно в train и test, что исключает
+    утечку данных (data leakage).
+
     Каждый фолд:
-      - test  = 1/n_folds часть данных
-      - val   = 15% от оставшихся (train+val)
+      - test  = 1/n_folds часть снимков (slide-level)
+      - val   = 15% от оставшихся (train+val), тоже slide-level
       - train = остаток
 
     Возвращает словарь с результатами каждого фолда и агрегатной статистикой.
     """
     all_samples = collect_samples(config.data.dir)
     labels = np.array([s[1] for s in all_samples])
+    groups = np.array([s[2] for s in all_samples])
 
-    skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=config.data.seed)
+    sgkf = StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=config.data.seed)
     fold_results: list[dict] = []
 
     for fold, (trainval_idx, test_idx) in enumerate(
-        skf.split(np.zeros(len(labels)), labels), start=1
+        sgkf.split(np.zeros(len(labels)), labels, groups=groups), start=1
     ):
         logger.info("\n" + "=" * 55)
         logger.info(f"  Fold {fold}/{n_folds}")
@@ -56,11 +61,14 @@ def cross_validate(config: Config, n_folds: int = 5) -> dict:
 
         fold_output = config.output.dir / f"fold_{fold}"
 
-        # Внутренний сплит train / val
+        # Внутренний сплит train / val (тоже slide-level)
         tv_labels = labels[trainval_idx]
+        tv_groups = groups[trainval_idx]
         val_frac = config.data.val_split / (1.0 - 1.0 / n_folds)
-        sss = StratifiedShuffleSplit(n_splits=1, test_size=val_frac, random_state=config.data.seed)
-        rel_train_idx, rel_val_idx = next(sss.split(np.zeros(len(trainval_idx)), tv_labels))
+        gss = GroupShuffleSplit(n_splits=1, test_size=val_frac, random_state=config.data.seed)
+        rel_train_idx, rel_val_idx = next(
+            gss.split(np.zeros(len(trainval_idx)), tv_labels, groups=tv_groups)
+        )
 
         train_s = [all_samples[i] for i in trainval_idx[rel_train_idx]]
         val_s = [all_samples[i] for i in trainval_idx[rel_val_idx]]

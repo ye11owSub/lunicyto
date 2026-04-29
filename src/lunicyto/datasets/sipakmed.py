@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import torchvision.transforms as T
 from PIL import Image
-from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.model_selection import GroupShuffleSplit
 from torch.utils.data import DataLoader, Dataset
 
 CLASSES: dict[str, int] = {
@@ -25,20 +25,48 @@ CLASS_NAMES = [
 _IMAGE_EXTENSIONS = {".bmp", ".png", ".jpg", ".jpeg"}
 
 
-def collect_samples(root: str | Path) -> list[tuple[Path, int]]:
+def collect_samples(root: str | Path) -> list[tuple[Path, int, str]]:
+    """Collect individual cell images from CROPPED/ subdirectories.
+
+    Returns a list of ``(image_path, class_label, slide_group_id)`` triples.
+    The ``slide_group_id`` encodes which original microscopy image the cell
+    was cropped from (e.g. ``"im_Dyskeratotic_001"`` for ``001_03.bmp``).
+    This key is used in :func:`split_samples` to keep all cells from the
+    same slide in the same split and thus prevent data leakage.
+
+    Background: each class directory contains two kinds of ``.bmp`` files:
+    - **Original images** (e.g. ``001.bmp``) — multi-cell cluster patches.
+    - **CROPPED/** — individual cells extracted from those patches
+      (e.g. ``001_01.bmp``, ``001_02.bmp``, …).
+
+    Using ``rglob`` on the class directory mixes both types: a training
+    sample ``001.bmp`` and a test sample ``001_01.bmp`` would be visually
+    nearly identical, inflating test metrics.  This function avoids that
+    by reading *only* the ``CROPPED/`` subdirectory.
+    """
     root = Path(root).resolve()
     if not root.exists():
         raise FileNotFoundError(f"dir not found: {root}")
 
-    samples: list[tuple[Path, int]] = []
+    samples: list[tuple[Path, int, str]] = []
 
     for class_folder, label in CLASSES.items():
-        class_dir = root / class_folder
-        if not class_dir.exists():
+        # Dataset layout: <root>/<class_folder>/<class_folder>/CROPPED/*.bmp
+        cropped_dir = root / class_folder / class_folder / "CROPPED"
+        if not cropped_dir.exists():
+            # Fallback for non-standard layouts: scan whole class dir
+            fallback = root / class_folder
+            for img_path in sorted(fallback.rglob("*")):
+                if img_path.is_file() and img_path.suffix.lower() in _IMAGE_EXTENSIONS:
+                    samples.append((img_path, label, img_path.stem))
             continue
-        for img_path in sorted(class_dir.rglob("*")):
+
+        for img_path in sorted(cropped_dir.glob("*")):
             if img_path.is_file() and img_path.suffix.lower() in _IMAGE_EXTENSIONS:
-                samples.append((img_path, label))
+                # "001_03.bmp" → slide_id "001" → group "im_Dyskeratotic_001"
+                slide_id = img_path.stem.rsplit("_", 1)[0]
+                group = f"{class_folder}_{slide_id}"
+                samples.append((img_path, label, group))
 
     return samples
 
@@ -74,7 +102,7 @@ def get_transform(img_size: int, is_train: bool) -> T.Compose:
 class SipakmedDataset(Dataset):
     def __init__(
         self,
-        samples: list[tuple[Path, int]],
+        samples: list[tuple[Path, int, str]],
         transform: T.Compose | None = None,
     ):
         self.samples = samples
@@ -84,7 +112,7 @@ class SipakmedDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx: int):
-        path, label = self.samples[idx]
+        path, label, _group = self.samples[idx]
         img = Image.open(path).convert("RGB")
         if self.transform is not None:
             img = self.transform(img)
@@ -96,35 +124,47 @@ class SipakmedDataset(Dataset):
 
 
 def split_samples(
-    samples: list[tuple[Path, int]],
+    samples: list[tuple[Path, int, str]],
     val_split: float = 0.15,
     test_split: float = 0.15,
     seed: int = 42,
 ) -> tuple[
-    list[tuple[Path, int]],
-    list[tuple[Path, int]],
-    list[tuple[Path, int]],
+    list[tuple[Path, int, str]],
+    list[tuple[Path, int, str]],
+    list[tuple[Path, int, str]],
 ]:
+    """Slide-level stratified split using GroupShuffleSplit.
 
+    All cells cropped from the same original microscopy image are kept
+    in the same partition (train / val / test).  This prevents the model
+    from seeing visually near-identical patches in both training and
+    evaluation, which would otherwise inflate reported metrics.
+    """
     labels = np.array([s[1] for s in samples])
+    groups = np.array([s[2] for s in samples])
     n = len(samples)
 
-    sss_test = StratifiedShuffleSplit(n_splits=1, test_size=test_split, random_state=seed)
-    train_val_idx, test_idx = next(sss_test.split(np.zeros(n), labels))
+    # Separate test set — keep whole slides together
+    gss_test = GroupShuffleSplit(n_splits=1, test_size=test_split, random_state=seed)
+    trainval_idx, test_idx = next(gss_test.split(np.zeros(n), labels, groups=groups))
 
+    # Separate val from the remaining train+val
     val_frac_of_trainval = val_split / (1.0 - test_split)
-    labels_tv = labels[train_val_idx]
-    sss_val = StratifiedShuffleSplit(n_splits=1, test_size=val_frac_of_trainval, random_state=seed)
-    rel_train_idx, rel_val_idx = next(sss_val.split(np.zeros(len(train_val_idx)), labels_tv))
+    tv_groups = groups[trainval_idx]
+    tv_labels = labels[trainval_idx]
+    gss_val = GroupShuffleSplit(n_splits=1, test_size=val_frac_of_trainval, random_state=seed)
+    rel_train_idx, rel_val_idx = next(
+        gss_val.split(np.zeros(len(trainval_idx)), tv_labels, groups=tv_groups)
+    )
 
-    train_idx = train_val_idx[rel_train_idx]
-    val_idx = train_val_idx[rel_val_idx]
+    train_idx = trainval_idx[rel_train_idx]
+    val_idx = trainval_idx[rel_val_idx]
 
-    train_samples = [samples[i] for i in train_idx]
-    val_samples = [samples[i] for i in val_idx]
-    test_samples = [samples[i] for i in test_idx]
-
-    return train_samples, val_samples, test_samples
+    return (
+        [samples[i] for i in train_idx],
+        [samples[i] for i in val_idx],
+        [samples[i] for i in test_idx],
+    )
 
 
 def get_dataloaders(
@@ -178,10 +218,12 @@ def get_dataloaders(
 def dataset_info(data_dir: str | Path) -> dict:
     samples = collect_samples(data_dir)
     labels = [s[1] for s in samples]
+    num_slides = len({s[2] for s in samples})
     per_class = {CLASS_NAMES[i]: labels.count(i) for i in range(len(CLASSES))}
 
     return {
         "total": len(samples),
+        "num_slides": num_slides,
         "per_class": per_class,
         "class_names": CLASS_NAMES,
         "num_classes": len(CLASSES),
