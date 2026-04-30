@@ -1,8 +1,16 @@
 from pathlib import Path
 
 import typer
+from torch.utils.data import DataLoader
 
-from lunicyto.datasets.sipakmed import CLASS_NAMES, dataset_info, get_dataloaders
+from lunicyto.datasets.sipakmed import (
+    CLASS_NAMES,
+    SipakmedDataset,
+    collect_samples,
+    dataset_info,
+    get_transform,
+    split_samples,
+)
 from lunicyto.models.baseline import build_baseline_model
 from lunicyto.models.hybrid_vit_cnn import build_model
 from lunicyto.training.trainer import Trainer
@@ -22,14 +30,47 @@ def train(config: Config, data_dir: None | Path, output_dir: None | Path) -> Non
         typer.echo(f"  {cls}: {cnt}")
     typer.echo()
 
-    train_loader, val_loader, test_loader = get_dataloaders(
-        data_dir=config.data.dir,
-        img_size=config.data.img_size,
-        batch_size=config.data.batch_size,
-        num_workers=config.data.num_workers,
+    # Build splits manually so we can pass raw test_samples to Trainer
+    # for post-training visual inspection grids.
+    all_samples = collect_samples(config.data.dir)
+    train_s, val_s, test_s = split_samples(
+        all_samples,
         val_split=config.data.val_split,
         test_split=config.data.test_split,
         seed=config.data.seed,
+    )
+
+    img_size = config.data.img_size
+    train_ds = SipakmedDataset(train_s, transform=get_transform(img_size, is_train=True))
+    val_ds = SipakmedDataset(val_s, transform=get_transform(img_size, is_train=False))
+    test_ds = SipakmedDataset(test_s, transform=get_transform(img_size, is_train=False))
+
+    nw = config.data.num_workers
+    bs = config.data.batch_size
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=bs,
+        shuffle=True,
+        num_workers=nw,
+        pin_memory=True,
+        drop_last=True,
+        persistent_workers=nw > 0,
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=bs,
+        shuffle=False,
+        num_workers=nw,
+        pin_memory=True,
+        persistent_workers=nw > 0,
+    )
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=bs,
+        shuffle=False,
+        num_workers=nw,
+        pin_memory=True,
+        persistent_workers=nw > 0,
     )
 
     typer.echo(f"Backbone: {config.model.backbone}  |  model_type: {config.model.model_type}")
@@ -73,6 +114,7 @@ def train(config: Config, data_dir: None | Path, output_dir: None | Path) -> Non
         grad_clip=config.training.grad_clip,
         early_stopping_patience=config.training.early_stopping_patience,
         class_names=CLASS_NAMES,
+        test_samples=test_s,
     )
 
     test_metrics = trainer.train()
