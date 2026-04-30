@@ -73,18 +73,23 @@ def compute_metrics(
 
     # AUC-ROC требует вероятностных оценок
     if y_score is not None:
+        # Макро-AUC: сохраняем сразу, до per-class вычислений
         try:
             auc_macro = roc_auc_score(
                 y_true_np, y_score, multi_class="ovr", average="macro", labels=labels
             )
-            auc_per_class = [
+            result["auc_roc_macro"] = float(auc_macro)
+        except ValueError:
+            pass  # не все классы представлены в y_true
+
+        # Per-class AUC: отдельный try — падение здесь не должно убирать макро-AUC
+        try:
+            result["auc_roc_per_class"] = [
                 float(roc_auc_score((y_true_np == i).astype(int), y_score[:, i]))
                 for i in range(n_classes)
             ]
-            result["auc_roc_macro"] = float(auc_macro)
-            result["auc_roc_per_class"] = auc_per_class
         except ValueError:
-            pass  # не все классы представлены — пропускаем
+            pass
 
     return result
 
