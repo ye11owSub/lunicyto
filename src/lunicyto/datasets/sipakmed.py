@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import torchvision.transforms as T
 from PIL import Image
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import StratifiedGroupKFold
 from torch.utils.data import DataLoader, Dataset
 
 CLASSES: dict[str, int] = {
@@ -133,28 +133,40 @@ def split_samples(
     list[tuple[Path, int, str]],
     list[tuple[Path, int, str]],
 ]:
-    """Slide-level stratified split using GroupShuffleSplit.
+    """Stratified slide-level split using StratifiedGroupKFold.
 
     All cells cropped from the same original microscopy image are kept
-    in the same partition (train / val / test).  This prevents the model
-    from seeing visually near-identical patches in both training and
-    evaluation, which would otherwise inflate reported metrics.
+    in the same partition (train / val / test).  Class distribution is
+    preserved across splits (stratified).  This combination prevents
+    both data leakage and AUC computation failures caused by missing
+    classes in the validation set.
+
+    n_splits is chosen so that 1 fold ≈ desired test/val fraction:
+    - test_split=0.15 → n_splits=7  (1/7 ≈ 14.3%)
+    - val_split=0.15  → n_splits=7  (1/7 ≈ 14.3% of train+val)
     """
     labels = np.array([s[1] for s in samples])
     groups = np.array([s[2] for s in samples])
     n = len(samples)
 
-    # Separate test set — keep whole slides together
-    gss_test = GroupShuffleSplit(n_splits=1, test_size=test_split, random_state=seed)
-    trainval_idx, test_idx = next(gss_test.split(np.zeros(n), labels, groups=groups))
+    # Heuristic: pick n_splits so that one fold ≈ requested fraction
+    def _n_splits(frac: float) -> int:
+        return max(2, round(1.0 / frac))
 
-    # Separate val from the remaining train+val
-    val_frac_of_trainval = val_split / (1.0 - test_split)
-    tv_groups = groups[trainval_idx]
+    # Separate test set — stratified and slide-level
+    sgkf_test = StratifiedGroupKFold(
+        n_splits=_n_splits(test_split), shuffle=True, random_state=seed
+    )
+    trainval_idx, test_idx = next(sgkf_test.split(np.zeros(n), labels, groups=groups))
+
+    # Separate val from train+val — also stratified and slide-level
     tv_labels = labels[trainval_idx]
-    gss_val = GroupShuffleSplit(n_splits=1, test_size=val_frac_of_trainval, random_state=seed)
+    tv_groups = groups[trainval_idx]
+    sgkf_val = StratifiedGroupKFold(
+        n_splits=_n_splits(val_split / (1.0 - test_split)), shuffle=True, random_state=seed
+    )
     rel_train_idx, rel_val_idx = next(
-        gss_val.split(np.zeros(len(trainval_idx)), tv_labels, groups=tv_groups)
+        sgkf_val.split(np.zeros(len(trainval_idx)), tv_labels, groups=tv_groups)
     )
 
     train_idx = trainval_idx[rel_train_idx]
