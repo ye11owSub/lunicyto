@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -11,6 +12,8 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def compute_metrics(
@@ -76,20 +79,24 @@ def compute_metrics(
         # Макро-AUC: сохраняем сразу, до per-class вычислений
         try:
             auc_macro = roc_auc_score(
-                y_true_np, y_score, multi_class="ovr", average="macro", labels=labels
+                y_true_np,
+                y_score.astype(np.float64),
+                multi_class="ovr",
+                average="macro",
+                labels=labels,
             )
             result["auc_roc_macro"] = float(auc_macro)
-        except ValueError:
-            pass  # не все классы представлены в y_true
+        except ValueError as e:
+            logger.debug("AUC macro computation failed: %s", e)
 
         # Per-class AUC: отдельный try — падение здесь не должно убирать макро-AUC
         try:
             result["auc_roc_per_class"] = [
-                float(roc_auc_score((y_true_np == i).astype(int), y_score[:, i]))
+                float(roc_auc_score((y_true_np == i).astype(int), y_score[:, i].astype(np.float64)))
                 for i in range(n_classes)
             ]
-        except ValueError:
-            pass
+        except ValueError as e:
+            logger.debug("AUC per-class computation failed: %s", e)
 
     return result
 
