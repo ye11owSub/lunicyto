@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import typer
-from sklearn.model_selection import GroupShuffleSplit, StratifiedGroupKFold
+from sklearn.model_selection import StratifiedGroupKFold
 from torch.utils.data import DataLoader
 
 from lunicyto.datasets.sipakmed import (
@@ -61,13 +61,16 @@ def cross_validate(config: Config, n_folds: int = 5) -> dict:
 
         fold_output = config.output.dir / f"fold_{fold}"
 
-        # Внутренний сплит train / val (тоже slide-level)
+        # Внутренний сплит train / val (тоже slide-level + stratified)
         tv_labels = labels[trainval_idx]
         tv_groups = groups[trainval_idx]
         val_frac = config.data.val_split / (1.0 - 1.0 / n_folds)
-        gss = GroupShuffleSplit(n_splits=1, test_size=val_frac, random_state=config.data.seed)
+        n_splits_val = max(2, round(1.0 / val_frac))
+        sgkf_val = StratifiedGroupKFold(
+            n_splits=n_splits_val, shuffle=True, random_state=config.data.seed
+        )
         rel_train_idx, rel_val_idx = next(
-            gss.split(np.zeros(len(trainval_idx)), tv_labels, groups=tv_groups)
+            sgkf_val.split(np.zeros(len(trainval_idx)), tv_labels, groups=tv_groups)
         )
 
         train_s = [all_samples[i] for i in trainval_idx[rel_train_idx]]
