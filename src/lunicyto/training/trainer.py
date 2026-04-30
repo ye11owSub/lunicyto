@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
+import lunicyto
 from lunicyto.training.early_stopping import EarlyStopping
 from lunicyto.training.metrics import compute_metrics, plot_confusion_matrix, plot_training_curves
 
@@ -132,11 +133,13 @@ class Trainer:
         self.best_val_acc = 0.0
 
     def train(self) -> dict:
-        logger.info(f"start of training: {self.epochs} epoch, device: {self.device}")
         logger.info(
-            f"Train: {len(self.train_loader)} | "
-            f"Val: {len(self.val_loader)} | "
-            f"Test: {len(self.test_loader)}"
+            f"Lunicyto v{lunicyto.__version__} | device: {self.device} | epochs: {self.epochs}"
+        )
+        logger.info(
+            f"Train: {len(self.train_loader)} batches | "
+            f"Val: {len(self.val_loader)} batches | "
+            f"Test: {len(self.test_loader)} batches"
         )
 
         for epoch in range(1, self.epochs + 1):
