@@ -236,7 +236,15 @@ class Trainer:
             batch_size = imgs.size(0)
             total_loss += loss.item() * batch_size
             preds = logits.argmax(dim=1)
-            correct += (preds == labels).sum().item()
+            if self.mixup_alpha > 0:
+                # Soft accuracy под Mixup: взвешенная сумма попаданий по обоим лейблам.
+                # preds == labels считает только y_a и игнорирует y_b — отсюда
+                # искусственно низкая train accuracy при высокой val accuracy.
+                correct += (
+                    (lam * (preds == y_a).float() + (1 - lam) * (preds == y_b).float()).sum().item()
+                )
+            else:
+                correct += (preds == labels).sum().item()
             total += batch_size
 
             pbar.set_postfix(loss=f"{loss.item():.4f}")
