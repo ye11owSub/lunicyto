@@ -30,8 +30,6 @@ def train(config: Config, data_dir: None | Path, output_dir: None | Path) -> Non
         typer.echo(f"  {cls}: {cnt}")
     typer.echo()
 
-    # Build splits manually so we can pass raw test_samples to Trainer
-    # for post-training visual inspection grids.
     all_samples = collect_samples(config.data.dir)
     train_s, val_s, test_s = split_samples(
         all_samples,
@@ -119,12 +117,12 @@ def train(config: Config, data_dir: None | Path, output_dir: None | Path) -> Non
 
     test_metrics = trainer.train()
 
-    typer.echo("\n=== Финальные результаты (тест) ===")
+    typer.echo("\n=== final results ===")
     typer.echo(f"Accuracy : {test_metrics['accuracy'] * 100:.2f}%")
     typer.echo(f"F1 macro : {test_metrics['f1_macro'] * 100:.2f}%")
     if "auc_roc_macro" in test_metrics:
         typer.echo(f"AUC macro: {test_metrics['auc_roc_macro'] * 100:.2f}%")
-    typer.echo(f"Результаты сохранены в: {config.output.dir}")
+    typer.echo(f"results saved to: {config.output.dir}")
 
 
 def main(
@@ -132,20 +130,20 @@ def main(
         Path("config/train.toml"),
         "--config",
         "-c",
-        help="Путь к toml-конфигурации обучения.",
+        help="Path to toml-config",
         exists=True,
         file_okay=True,
     ),
     data_dir: None | Path = typer.Option(
         None,
         "--data-dir",
-        help="Переопределить data.dir из конфига.",
+        help="Set data.dir",
     ),
     output_dir: None | Path = typer.Option(
         None,
         "--output-dir",
         "-o",
-        help="Переопределить output.dir из конфига.",
+        help="Set output.dir",
     ),
 ) -> None:
     config = Config.from_toml(config_path)

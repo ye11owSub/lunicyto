@@ -1,5 +1,3 @@
-Diploma Thesis, HSE
-
 ## Installation
 
 Make sure you have [uv](https://docs.astral.sh/uv/getting-started/installation/) installed.
@@ -12,35 +10,12 @@ uv tool install --editable lunicyto@.
 
 With `--editable`, Python source changes take effect immediately — no reinstall needed for `.py` edits.
 
-### When you must reinstall
+> **CUDA note.** On Linux and Windows, `pyproject.toml` redirects `torch` and
+> `torchvision` to the PyTorch CUDA 12.4 index
+> (`https://download.pytorch.org/whl/cu124`) via `[tool.uv.sources]`.
+> uv resolves CUDA wheels automatically — no extra flags needed.
+> On macOS the standard PyPI wheels are used (MPS is supported natively).
 
-Reinstall is required when `pyproject.toml` changes (entry points, dependencies, version bump):
-
-```bash
-uv tool install --editable lunicyto@. --reinstall
-```
-
-Or explicitly:
-
-```bash
-uv tool uninstall lunicyto
-uv tool install --editable lunicyto@.
-```
-
-### Verify the running version
-
-Always check the version before training to confirm you're running the expected code:
-
-```bash
-lunicyto --version        # prints: lunicyto v0.4.0
-lunicyto -V               # same, short flag
-```
-
-The version is also printed in the first log line of every training run:
-
-```
-[INFO] Lunicyto v0.4.0 | device: cuda | epochs: 50
-```
 
 ### Download the Dataset
 

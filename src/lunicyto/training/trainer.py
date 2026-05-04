@@ -63,17 +63,6 @@ def _save_image_grid(
     thumb_size: int = 112,
     ncols: int = 8,
 ) -> None:
-    """Save a matplotlib grid of cell images with true/predicted class labels.
-
-    Args:
-        samples:     list of (image_path, true_label, pred_label).
-        class_names: ordered list of class name strings.
-        save_path:   where to write the PNG.
-        title:       figure suptitle.
-        mode:        "wrong" → red captions, "correct" → green captions.
-        thumb_size:  resize each thumbnail to this square size (pixels).
-        ncols:       maximum columns in the grid.
-    """
     n = len(samples)
     if n == 0:
         return
@@ -240,8 +229,6 @@ class Trainer:
 
         self.writer.close()
 
-        # Restore best checkpoint so test evaluation reflects the best model,
-        # not the last epoch (which may have regressed after the best epoch).
         ckpt_path = self.output_dir / "best_model.pth"
         if ckpt_path.exists():
             ckpt = torch.load(ckpt_path, map_location=self.device, weights_only=True)
@@ -339,8 +326,6 @@ class Trainer:
             total_loss += loss.item() * batch_size  # сумма по сэмплам
             total += batch_size
 
-            # .float() → float32 перед softmax: AMP даёт float16-логиты,
-            # и float16-вероятности ломают roc_auc_score (overflow в sum-нормировке).
             probs = torch.softmax(logits.float(), dim=1)
             all_probs.append(probs.cpu().numpy())
             all_labels.extend(labels.cpu().tolist())
@@ -358,11 +343,6 @@ class Trainer:
         phase: str = "test",
         use_tta: bool = False,
     ) -> dict:
-        """Оценка на loader.
-
-        use_tta=True — применяет 4 флип-аугментации и усредняет softmax,
-        что даёт +0.5–1% accuracy без дополнительного обучения.
-        """
         self.model.eval()
         all_probs: list[np.ndarray] = []
         all_labels: list[int] = []
@@ -519,7 +499,6 @@ class Trainer:
         else:
             logger.info("No wrong predictions — perfect test accuracy!")
 
-        # --- correct samples grid (n_correct_per_class per class) ---
         correct_sample: list[tuple[Path, int, int]] = []
         for cls_idx in range(len(self.class_names)):
             correct_sample.extend(correct_by_class[cls_idx][:n_correct_per_class])
@@ -534,7 +513,6 @@ class Trainer:
             )
             logger.info(f"Correct samples grid → {save_dir}/correct_samples.png")
 
-        # --- per-class error breakdown ---
         n_total = len(test_samples)
         n_wrong = len(wrong_all)
         logger.info(

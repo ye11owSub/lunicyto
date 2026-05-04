@@ -26,24 +26,6 @@ _IMAGE_EXTENSIONS = {".bmp", ".png", ".jpg", ".jpeg"}
 
 
 def collect_samples(root: str | Path) -> list[tuple[Path, int, str]]:
-    """Collect individual cell images from CROPPED/ subdirectories.
-
-    Returns a list of ``(image_path, class_label, slide_group_id)`` triples.
-    The ``slide_group_id`` encodes which original microscopy image the cell
-    was cropped from (e.g. ``"im_Dyskeratotic_001"`` for ``001_03.bmp``).
-    This key is used in :func:`split_samples` to keep all cells from the
-    same slide in the same split and thus prevent data leakage.
-
-    Background: each class directory contains two kinds of ``.bmp`` files:
-    - **Original images** (e.g. ``001.bmp``) — multi-cell cluster patches.
-    - **CROPPED/** — individual cells extracted from those patches
-      (e.g. ``001_01.bmp``, ``001_02.bmp``, …).
-
-    Using ``rglob`` on the class directory mixes both types: a training
-    sample ``001.bmp`` and a test sample ``001_01.bmp`` would be visually
-    nearly identical, inflating test metrics.  This function avoids that
-    by reading *only* the ``CROPPED/`` subdirectory.
-    """
     root = Path(root).resolve()
     if not root.exists():
         raise FileNotFoundError(f"dir not found: {root}")
@@ -51,10 +33,8 @@ def collect_samples(root: str | Path) -> list[tuple[Path, int, str]]:
     samples: list[tuple[Path, int, str]] = []
 
     for class_folder, label in CLASSES.items():
-        # Dataset layout: <root>/<class_folder>/<class_folder>/CROPPED/*.bmp
         cropped_dir = root / class_folder / class_folder / "CROPPED"
         if not cropped_dir.exists():
-            # Fallback for non-standard layouts: scan whole class dir
             fallback = root / class_folder
             for img_path in sorted(fallback.rglob("*")):
                 if img_path.is_file() and img_path.suffix.lower() in _IMAGE_EXTENSIONS:
@@ -63,7 +43,6 @@ def collect_samples(root: str | Path) -> list[tuple[Path, int, str]]:
 
         for img_path in sorted(cropped_dir.glob("*")):
             if img_path.is_file() and img_path.suffix.lower() in _IMAGE_EXTENSIONS:
-                # "001_03.bmp" → slide_id "001" → group "im_Dyskeratotic_001"
                 slide_id = img_path.stem.rsplit("_", 1)[0]
                 group = f"{class_folder}_{slide_id}"
                 samples.append((img_path, label, group))
@@ -112,7 +91,7 @@ class SipakmedDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx: int):
-        path, label, _group = self.samples[idx]
+        path, label, _ = self.samples[idx]
         img = Image.open(path).convert("RGB")
         if self.transform is not None:
             img = self.transform(img)
@@ -133,33 +112,18 @@ def split_samples(
     list[tuple[Path, int, str]],
     list[tuple[Path, int, str]],
 ]:
-    """Stratified slide-level split using StratifiedGroupKFold.
-
-    All cells cropped from the same original microscopy image are kept
-    in the same partition (train / val / test).  Class distribution is
-    preserved across splits (stratified).  This combination prevents
-    both data leakage and AUC computation failures caused by missing
-    classes in the validation set.
-
-    n_splits is chosen so that 1 fold ≈ desired test/val fraction:
-    - test_split=0.15 → n_splits=7  (1/7 ≈ 14.3%)
-    - val_split=0.15  → n_splits=7  (1/7 ≈ 14.3% of train+val)
-    """
     labels = np.array([s[1] for s in samples])
     groups = np.array([s[2] for s in samples])
     n = len(samples)
 
-    # Heuristic: pick n_splits so that one fold ≈ requested fraction
     def _n_splits(frac: float) -> int:
         return max(2, round(1.0 / frac))
 
-    # Separate test set — stratified and slide-level
     sgkf_test = StratifiedGroupKFold(
         n_splits=_n_splits(test_split), shuffle=True, random_state=seed
     )
     trainval_idx, test_idx = next(sgkf_test.split(np.zeros(n), labels, groups=groups))
 
-    # Separate val from train+val — also stratified and slide-level
     tv_labels = labels[trainval_idx]
     tv_groups = groups[trainval_idx]
     sgkf_val = StratifiedGroupKFold(

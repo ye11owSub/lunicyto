@@ -50,11 +50,6 @@ class TransformerBlock(nn.Module):
         return x
 
     def forward_with_attn(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Единственный проход: возвращает (output, attention_weights).
-
-        В отличие от наивного варианта (считать attention отдельно, потом вызвать forward),
-        здесь attention вычисляется ровно один раз — те же веса, что участвуют в residual.
-        """
         normed = self.norm1(x)
         attn_out, weights = self.attn(normed, normed, normed, need_weights=True)
         x = x + self.drop_path(attn_out)
