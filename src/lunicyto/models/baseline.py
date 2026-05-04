@@ -4,7 +4,6 @@ import torch.nn as nn
 
 
 class ConvNextBaseline(nn.Module):
-
     def __init__(
         self,
         num_classes: int = 5,
