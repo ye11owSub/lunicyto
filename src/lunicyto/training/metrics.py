@@ -22,21 +22,6 @@ def compute_metrics(
     class_names: list[str] | None = None,
     y_score: np.ndarray | None = None,
 ) -> dict:
-    """Вычисляет полный набор метрик классификации.
-
-    Args:
-        y_true:      истинные метки.
-        y_pred:      предсказанные метки.
-        class_names: названия классов (для отчёта).
-        y_score:     матрица вероятностей (N, C) после softmax.
-                     Нужна для AUC-ROC; если None — AUC не считается.
-
-    Returns:
-        dict с ключами: accuracy, f1_macro, f1_per_class,
-        sensitivity_per_class, specificity_per_class,
-        confusion_matrix, report, и опционально
-        auc_roc_macro, auc_roc_per_class.
-    """
     y_true_np = np.array(y_true)
     y_pred_np = np.array(y_pred)
     n_classes = len(class_names) if class_names else int(y_true_np.max()) + 1
@@ -74,9 +59,7 @@ def compute_metrics(
         "report": report,
     }
 
-    # AUC-ROC требует вероятностных оценок
     if y_score is not None:
-        # Макро-AUC: сохраняем сразу, до per-class вычислений
         try:
             auc_macro = roc_auc_score(
                 y_true_np,
@@ -89,7 +72,6 @@ def compute_metrics(
         except ValueError as e:
             logger.debug("AUC macro computation failed: %s", e)
 
-        # Per-class AUC: отдельный try — падение здесь не должно убирать макро-AUC
         try:
             result["auc_roc_per_class"] = [
                 float(roc_auc_score((y_true_np == i).astype(int), y_score[:, i].astype(np.float64)))

@@ -1,14 +1,3 @@
-"""K-Fold cross-validation для оценки робастности модели.
-
-Зачем нужна ВКР:
-  Один train/val/test сплит зависит от случайного seed. K-Fold показывает
-  среднее и стандартное отклонение метрик по K разбиениям — это значительно
-  убедительнее для рецензента, чем одно число.
-
-Запуск:
-  lunicyto cv --config config/train.toml --folds 5
-"""
-
 import logging
 from pathlib import Path
 
@@ -32,19 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 def cross_validate(config: Config, n_folds: int = 5) -> dict:
-    """Запускает n_folds-кратную стратифицированную кросс-валидацию.
-
-    Использует StratifiedGroupKFold: клетки из одного исходного снимка
-    никогда не попадают одновременно в train и test, что исключает
-    утечку данных (data leakage).
-
-    Каждый фолд:
-      - test  = 1/n_folds часть снимков (slide-level)
-      - val   = 15% от оставшихся (train+val), тоже slide-level
-      - train = остаток
-
-    Возвращает словарь с результатами каждого фолда и агрегатной статистикой.
-    """
     all_samples = collect_samples(config.data.dir)
     labels = np.array([s[1] for s in all_samples])
     groups = np.array([s[2] for s in all_samples])
@@ -61,7 +37,6 @@ def cross_validate(config: Config, n_folds: int = 5) -> dict:
 
         fold_output = config.output.dir / f"fold_{fold}"
 
-        # Внутренний сплит train / val (тоже slide-level + stratified)
         tv_labels = labels[trainval_idx]
         tv_groups = groups[trainval_idx]
         val_frac = config.data.val_split / (1.0 - 1.0 / n_folds)
@@ -185,7 +160,7 @@ def main(
         Path("config/train.toml"),
         "--config",
         "-c",
-        help="Путь к toml-конфигурации.",
+        help="Path to toml-config",
         exists=True,
         file_okay=True,
     ),
@@ -194,7 +169,7 @@ def main(
         None,
         "--output-dir",
         "-o",
-        help="Переопределить output.dir из конфига.",
+        help="Set output.dir",
     ),
 ) -> None:
     config = Config.from_toml(config_path)

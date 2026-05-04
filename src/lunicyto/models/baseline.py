@@ -1,19 +1,9 @@
-"""ConvNeXt-only baseline для аблационного исследования.
-
-Используется для сравнения с HybridViTCNN:
-  - ConvNextBaseline: ConvNeXt + global average pooling + голова
-  - Нет трансформерного энкодера → показывает вклад ViT-части
-
-Запуск через config/train_baseline.toml, где model_type = "baseline".
-"""
-
 import timm
 import torch
 import torch.nn as nn
 
 
 class ConvNextBaseline(nn.Module):
-    """ConvNeXt с global average pooling — бейзлайн без ViT-головы."""
 
     def __init__(
         self,
