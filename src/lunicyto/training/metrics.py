@@ -72,13 +72,18 @@ def compute_metrics(
         except ValueError as e:
             logger.debug("AUC macro computation failed: %s", e)
 
-        try:
-            result["auc_roc_per_class"] = [
-                float(roc_auc_score((y_true_np == i).astype(int), y_score[:, i].astype(np.float64)))
-                for i in range(n_classes)
-            ]
-        except ValueError as e:
-            logger.debug("AUC per-class computation failed: %s", e)
+        per_class_auc: list[float] = []
+        for i in range(n_classes):
+            try:
+                auc_i = roc_auc_score(
+                    (y_true_np == i).astype(int),
+                    y_score[:, i].astype(np.float64),
+                )
+                per_class_auc.append(float(auc_i))
+            except ValueError as e:
+                logger.debug("AUC class %d computation failed: %s", i, e)
+                per_class_auc.append(float("nan"))
+        result["auc_roc_per_class"] = per_class_auc
 
     return result
 

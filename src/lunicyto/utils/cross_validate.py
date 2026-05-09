@@ -1,7 +1,11 @@
 import logging
+import random
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import torch
 import typer
 from sklearn.model_selection import StratifiedGroupKFold
 from torch.utils.data import DataLoader
@@ -20,7 +24,17 @@ from lunicyto.utils.models import Config
 logger = logging.getLogger(__name__)
 
 
+def _set_global_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
 def cross_validate(config: Config, n_folds: int = 5) -> dict:
+    _set_global_seed(config.data.seed)
     all_samples = collect_samples(config.data.dir)
     labels = np.array([s[1] for s in all_samples])
     groups = np.array([s[2] for s in all_samples])
@@ -175,6 +189,10 @@ def main(
     config = Config.from_toml(config_path)
     if output_dir is not None:
         config.output.dir = output_dir
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    config.output.dir = config.output.dir / timestamp
+    config.output.dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(config_path, config.output.dir / "config_used.toml")
     summary = cross_validate(config, n_folds=folds)
 
     typer.echo("\n=== Cross-Validation Results ===")

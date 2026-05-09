@@ -1,5 +1,10 @@
+import random
+import shutil
+from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+import torch
 import typer
 from torch.utils.data import DataLoader
 
@@ -17,11 +22,34 @@ from lunicyto.training.trainer import Trainer
 from lunicyto.utils.models import Config
 
 
-def train(config: Config, data_dir: None | Path, output_dir: None | Path) -> None:
+def _set_global_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def train(
+    config: Config,
+    data_dir: None | Path,
+    output_dir: None | Path,
+    config_path: None | Path = None,
+) -> None:
     if data_dir is not None:
         config.data.dir = data_dir
     if output_dir is not None:
         config.output.dir = output_dir
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    config.output.dir = config.output.dir / timestamp
+    config.output.dir.mkdir(parents=True, exist_ok=True)
+
+    _set_global_seed(config.data.seed)
+
+    if config_path is not None:
+        shutil.copy(config_path, config.output.dir / "config_used.toml")
 
     typer.echo(f"\nДатасет: {config.data.dir}")
     info = dataset_info(str(config.data.dir))
@@ -147,4 +175,4 @@ def main(
     ),
 ) -> None:
     config = Config.from_toml(config_path)
-    train(config=config, data_dir=data_dir, output_dir=output_dir)
+    train(config=config, data_dir=data_dir, output_dir=output_dir, config_path=config_path)
