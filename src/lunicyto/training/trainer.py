@@ -60,7 +60,7 @@ def _save_image_grid(
     save_path: Path,
     title: str,
     mode: str = "wrong",
-    thumb_size: int = 112,
+    thumb_size: int = 224,
     ncols: int = 8,
 ) -> None:
     n = len(samples)
@@ -69,28 +69,54 @@ def _save_image_grid(
     ncols = min(ncols, n)
     nrows = math.ceil(n / ncols)
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 1.8, nrows * 2.2))
+    cell_w, cell_h = 2.4, 2.9
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * cell_w, nrows * cell_h))
     axes_flat: list = np.array(axes).flatten().tolist() if n > 1 else [axes]
 
     for i, ax in enumerate(axes_flat):
-        ax.axis("off")
+        ax.set_xticks([])
+        ax.set_yticks([])
         if i >= n:
+            for spine in ax.spines.values():
+                spine.set_visible(False)
             continue
+
         path, true_label, pred_label = samples[i]
         img = PILImage.open(path).convert("RGB").resize((thumb_size, thumb_size))
         ax.imshow(np.array(img))
+
         true_name = class_names[true_label] if true_label < len(class_names) else str(true_label)
         pred_name = class_names[pred_label] if pred_label < len(class_names) else str(pred_label)
-        color = "red" if mode == "wrong" else "green"
-        if mode == "wrong":
-            caption = f"T: {true_name[:10]}\nP: {pred_name[:10]}"
-        else:
-            caption = true_name[:14]
-        ax.set_title(caption, fontsize=5.5, color=color, pad=2)
 
-    fig.suptitle(title, fontsize=9, y=1.01)
-    plt.tight_layout(pad=0.4)
-    fig.savefig(save_path, dpi=120, bbox_inches="tight")
+        is_wrong = mode == "wrong"
+        color = "#d62728" if is_wrong else "#2ca02c"
+
+        for spine in ax.spines.values():
+            spine.set_edgecolor(color)
+            spine.set_linewidth(3.5)
+
+        if is_wrong:
+            caption = f"T: {true_name}\nP: {pred_name}"
+        else:
+            caption = true_name
+        ax.set_title(caption, fontsize=9, color=color, pad=4, fontweight="bold")
+
+        if is_wrong:
+            ax.text(
+                0.02,
+                0.98,
+                "WRONG",
+                transform=ax.transAxes,
+                fontsize=8,
+                color="white",
+                fontweight="bold",
+                verticalalignment="top",
+                bbox=dict(facecolor=color, edgecolor="none", pad=2, alpha=0.85),
+            )
+
+    fig.suptitle(title, fontsize=14, y=1.0, fontweight="bold")
+    plt.tight_layout(pad=0.6, rect=(0, 0, 1, 0.97))
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
