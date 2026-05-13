@@ -15,10 +15,7 @@ With `--editable`, Python source changes take effect immediately — no reinstal
 Use the CLI to download the dataset:
 
 ```bash
-# Download with default settings (dataset: sipakmed, output: data/sipakmed)
 lunicyto download
-
-# Or specify custom dataset and output directory
 lunicyto download <dataset-name> --output <path>
 ```
 
