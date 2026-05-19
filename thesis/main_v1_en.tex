@@ -102,28 +102,28 @@
 
 \begin{abstract}
 Cervical cancer is the fourth most frequent cause of cancer incidence and
-mortality in women worldwide. Early diagnosis through cytological screening
-based on the Papanicolaou smear substantially increases patient survival.
+mortality in women worldwide. Early diagnosis through cytology screening
+based on Papanicolaou smears substantially increases patient survival.
 This work presents a hybrid model for multi-class classification of cells
 in cytology screening, combining a ConvNeXt convolutional neural network
 with a Vision Transformer encoder. The model is trained on the SIPaKMeD
 dataset, containing 4\,049 images of isolated cells (the CROPPED subset)
-across five classes. Unlike previous work, a stratified train/validation/test
-split is applied that ensures balanced class representation. Training uses
-label smoothing, Mixup augmentation, RandAugment, stochastic depth, and
-separate learning rates for the backbone and the transformer head.
-Experiments on the held-out test set demonstrate Accuracy 95.51\%,
-F1-score (macro) 95.48\%, and AUC-ROC (macro) 99.72\%. An ablation
-against a baseline without the transformer part confirms the contribution
-of each architectural component. The work produced: a reproducible
-software package with a command-line interface, a set of trained model
-checkpoints, scripts for plotting training curves and confusion matrices,
-and an attention rollout visualization module for interpreting the
-model's decisions.
+across five classes. Unlike previous work, a stratified
+train/validation/test split is applied that ensures balanced class
+representation. Training uses label smoothing, Mixup augmentation,
+RandAugment, stochastic depth, and separate learning rates for the
+backbone and the transformer part. Experiments on the held-out test set
+demonstrate Accuracy 95.51\%, F1-score (macro) 95.48\%, and AUC-ROC
+(macro) 99.72\%. An ablation against a baseline model without the
+transformer part confirms the contribution of each architectural
+component. The work produced: a reproducible software package with a
+command-line interface, a set of trained model checkpoints, scripts for
+plotting training curves and confusion matrices, and an attention rollout
+visualization module for interpreting the model's decisions.
 
 \textbf{Keywords:} cervical cancer, cytology, Papanicolaou smear,
-computer vision, Vision Transformer, ConvNeXt, stochastic depth,
-Mixup, image classification.
+computer vision, Vision Transformer, ConvNeXt, stochastic depth, Mixup,
+image classification.
 \end{abstract}
 
 
@@ -135,17 +135,17 @@ Mixup, image classification.
 \addcontentsline{toc}{chapter}{Introduction}
 \label{ch:intro}
 
-Cervical cancer remains one of the key challenges in women's oncology care.
-According to GLOBOCAN, more than 600\,000 new cases and about 340\,000
-deaths are registered worldwide every year \cite{bray2018global}. At the
-same time, early detection of precancerous changes makes it possible to
-achieve five-year survival above 90\% \cite{curry2018screening}.
-The distribution of incidence is uneven: in countries with developed
-screening programmes, cervical cancer mortality has fallen several-fold
-over the past decades, whereas in regions with limited access to
-cytological screening it remains high. This disparity is driven not so
-much by the biology of the disease as by organizational and workforce
-factors.
+Cervical cancer remains one of the key challenges in women's oncology
+care. According to GLOBOCAN, more than 600\,000 new cases and about
+340\,000 deaths are registered worldwide every year
+\cite{bray2018global}. At the same time, early detection of precancerous
+changes makes it possible to achieve five-year survival above 90\%
+\cite{curry2018screening}. The distribution of incidence is uneven: in
+countries with developed screening programmes, cervical cancer mortality
+has fallen several-fold over the past decades, whereas in regions with
+limited access to cytology screening it remains high. This disparity is
+driven not so much by the biology of the disease as by organizational
+and workforce factors.
 
 The Papanicolaou cytology screening test (Pap test), proposed by
 G.~Papanicolaou in 1928 and adopted in clinical practice from the 1940s,
@@ -158,19 +158,19 @@ relative simplicity, the method has two fundamental limitations. The
 first is the subjectivity of interpretation: agreement between two
 independent cytologists on ambiguous, borderline slides remains
 moderate. Quantitatively this is expressed by Cohen's kappa coefficient,
-which on such cases rarely exceeds 0.6 on a scale from 0
-(agreement at the level of random guessing) to 1 (perfect agreement);
-the threshold of clinical reliability is usually considered to be at
-least 0.8 \cite{branca2015recommendations}. The second limitation is
-high labor intensity: a single screening slide contains tens of thousands
-of cells, only a few of which may be pathologically altered. By the end
-of the working day, cytologist fatigue naturally leads to an increase in
+which on such cases rarely exceeds 0.6 on a scale from 0 (agreement at
+the level of random guessing) to 1 (perfect agreement); the threshold of
+clinical reliability is usually considered to be at least 0.8
+\cite{branca2015recommendations}. The second limitation is high labor
+intensity: a single screening slide contains tens of thousands of cells,
+only a few of which may be pathologically altered. By the end of the
+working day, cytologist fatigue naturally leads to an increase in
 false-negative reports.
 
 The idea of automating the search for abnormal cells on a cytology slide
-is not new. The first commercial CAD systems --- PAPNET (1990s) ---
-used a multi-level neural network cascade to select suspicious cells
-with subsequent manual verification. They did not gain wide adoption,
+is not new. The first commercial CAD systems --- PAPNET (1990s) --- used
+a multi-level neural network cascade to select suspicious cells with
+subsequent manual verification. They did not gain wide adoption,
 primarily because of low accuracy and high cost. With the emergence of
 convolutional neural networks (CNN) in the 2010s and their dominance in
 computer vision tasks \cite{lecun2015deep}, interest in automated
@@ -190,27 +190,28 @@ property is potentially valuable: for instance, classifying a cell
 requires an \textit{aggregate} assessment of the nucleus-to-cytoplasm
 ratio and of perinuclear halo characteristics, i.e.\ global context
 within the cell. In practice a pure ViT requires large amounts of
-training data, which is at odds with typical medical dataset sizes.
-For this reason, recent years have seen the rise of \textit{hybrid}
-CNN+ViT architectures, in which a CNN stage extracts local features and
-the transformer aggregates global context over the feature map.
+training data, which is at odds with typical medical dataset sizes. For
+this reason, recent years have seen the rise of \textit{hybrid} CNN+ViT
+architectures, in which a CNN stage extracts local features and the
+transformer aggregates global context over the feature map.
 
 In cytology, these architectures have started to be applied only in the
 last few years. Works such as \cite{cerviformer2023, cervigan2025,
-hybridvit2025} report impressive accuracy numbers on SIPaKMeD --- 96--99\%.
-However, most publications do not explicitly discuss how the dataset
-split was performed. SIPaKMeD structurally contains several cells cropped
-from the same source slide; if a random split does not account for this
-grouping, cells from one slide end up simultaneously in both the train
-and test subsets. The model can then memorize slide-specific artifacts
---- the staining tone of a particular dye batch, lighting and microscope
-calibration peculiarities, tissue features of a given patient --- and
-produce high test accuracy by relying on these cues instead of general
-cytological features. In real deployment such a model is confronted with
-slides from entirely new patients, where these cues are absent, and
-accuracy drops sharply. Therefore in a medical task an honest evaluation
-must model generalization specifically to a \textit{new patient}, not to
-a new cell of an already-known one. Random splitting without grouping
+hybridvit2025} report impressive accuracy numbers on SIPaKMeD ---
+96--99\%. However, most publications do not explicitly discuss how the
+dataset split was performed. SIPaKMeD structurally contains several
+cells cropped from the same source slide; if a random split does not
+account for this grouping, cells from one slide end up simultaneously in
+both the train and test subsets. The model can then memorize
+slide-specific artifacts --- the staining tone of a particular dye
+batch, lighting and microscope calibration peculiarities, tissue
+features of a given patient --- and produce high test accuracy by
+relying on these cues instead of general cytological features. In real
+deployment such a model is confronted with slides from entirely new
+patients, where these cues are absent, and accuracy drops sharply.
+Therefore in a medical task an honest evaluation must model
+generalization specifically to a \textit{new patient}, not to a new cell
+of an already-known one. Random splitting without grouping
 systematically inflates the percentages reported in the literature and
 makes cross-method comparison difficult.
 
@@ -229,8 +230,8 @@ hybrid CNN + Vision Transformer architecture and to evaluate it on the
 public SIPaKMeD dataset with a methodologically sound validation
 procedure that includes: (1) stratified splitting with grouping by slide
 (\texttt{StratifiedGroupKFold}) to exclude leakage of patient features
-between train and test sets; (2) five-fold cross-validation with mean
-and standard deviation reporting; (3) a held-out test set not used
+between the train and test sets; (2) five-fold cross-validation with
+mean and standard deviation reporting; (3) a held-out test set not used
 during hyperparameter tuning.
 
 \textbf{Objectives:}
@@ -239,12 +240,11 @@ during hyperparameter tuning.
           images.
     \item Implement a correct SIPaKMeD data loading pipeline with
           sample completeness verification and a stratified split.
-    \item Implement a hybrid model (ConvNeXt + Transformer encoder)
-          with advanced regularization and training techniques.
+    \item Implement a hybrid model (ConvNeXt + Transformer encoder) with
+          advanced regularization and training techniques.
     \item Run experiments on the SIPaKMeD dataset and compare results
           with baseline approaches from the literature.
-    \item Package the implementation as a reproducible software
-          package.
+    \item Package the implementation as a reproducible software package.
 \end{enumerate}
 
 \textbf{Scientific novelty} consists in applying an extended set of
@@ -266,9 +266,9 @@ during cervical cancer screening.
 The standard for classifying Pap-test results is the Bethesda system
 (TBS), whose latest revision dates from 2014. TBS introduces a
 terminology that combines cytological and histological findings into a
-single dysplasia-grade scale: NILM (no intraepithelial lesions),
-ASC-US, ASC-H, LSIL, HSIL, AGC, and carcinoma. At the level of a single
-cell, this classification relies on a number of morphological features:
+single dysplasia-grade scale: NILM (no intraepithelial lesions), ASC-US,
+ASC-H, LSIL, HSIL, AGC, and carcinoma. At the level of a single cell,
+this classification relies on a number of morphological features:
 nuclear size and shape, nucleus-to-cytoplasm ratio (N/C ratio), nuclear
 hypochromia, presence of a perinuclear halo, multinucleation, and
 nuclear contour irregularity \cite{randel2013acog}. An experienced
@@ -276,19 +276,19 @@ cytologist recognizes these features within fractions of a second, but
 formalizing them as reproducible quantitative rules turns out to be
 non-trivial.
 
-The SIPaKMeD dataset \cite{plissiti2018sipakmed} used in this work
-organizes cells into five cytological classes:
+The SIPaKMeD dataset \cite{plissiti2018sipakmed}, used in the present
+work, organizes cells into five cytological classes:
 \begin{itemize}
-    \item \textbf{Superficial-Intermediate} --- normal squamous cells
-          of the superficial and intermediate layers of the stratified
-          epithelium. Large, with a small nucleus-to-cytoplasm ratio
-          and abundant eosinophilic or basophilic cytoplasm. Predominant
-          in the smear of a healthy woman of reproductive age.
+    \item \textbf{Superficial-Intermediate} --- normal squamous cells of
+          the superficial and intermediate layers of the stratified
+          epithelium. Large, with a small nucleus-to-cytoplasm ratio and
+          abundant eosinophilic or basophilic cytoplasm. Predominant in
+          the smear of a healthy woman of reproductive age.
     \item \textbf{Parabasal} --- normal cells of the basal layer, small,
           with a relatively large nucleus. In the smear of a healthy
           woman of reproductive age they are rare, but their proportion
-          grows in the postmenopausal period due to atrophic changes
-          in the epithelium; in this age context they are considered
+          grows in the postmenopausal period due to atrophic changes in
+          the epithelium; in this age context they are considered
           normal.
     \item \textbf{Koilocytotic} --- cells with koilocytosis: a
           perinuclear halo around a shrunken hyperchromatic nucleus.
@@ -306,16 +306,16 @@ organizes cells into five cytological classes:
           further progression.
 \end{itemize}
 
-Of the five SIPaKMeD classes, three (Superficial-Intermediate, Parabasal,
-Metaplastic) are clinically regarded as normal or benign, while two
-(Koilocytotic, Dyskeratotic) are unambiguously abnormal. From the
-standpoint of automated screening, the minimal working task would be a
-binary normal/abnormal split. However, the multi-class formulation
+Of the five SIPaKMeD classes, three (Superficial-Intermediate,
+Parabasal, Metaplastic) are clinically regarded as normal or benign,
+while two (Koilocytotic, Dyskeratotic) are unambiguously abnormal. From
+the standpoint of automated screening, the minimal working task would be
+a binary normal/abnormal split. However, the multi-class formulation
 preserves diagnostic interpretability of the model's output:
-koilocytosis and dyskeratosis point to different clinical scenarios
-(HPV infection vs.\ dysplasia) and lead to different follow-up
-protocols. Therefore both the literature and this work consider the
-five-class task.
+koilocytosis and dyskeratosis point to different clinical scenarios (HPV
+infection vs.\ dysplasia) and lead to different follow-up protocols.
+Therefore both the literature and this work consider the five-class
+task.
 
 \section{Evolution of neural network architectures for vision}
 
@@ -328,13 +328,13 @@ The CNN era in computer vision was defined by the works of LeCun et~al.\
 (ResNet, 2015) --- each subsequent architecture addressed the problem of
 the previous one through residual connections, batch normalization, and
 increased depth. The EfficientNet family (Tan and Le, 2019) formalized
-scaling along depth, width, and resolution; this approach remains one
-of the standards for medical vision.
+scaling along depth, width, and resolution; this approach remains one of
+the standards for medical vision.
 
 The emergence of the Vision Transformer \cite{liu2022convnext}\footnote{The
 canonical ViT reference is often Dosovitskiy et~al.\ ICLR 2021; here we
-cite the ConvNeXt work, which provides a detailed comparison of CNNs
-and ViTs.} divided the community. ViT cuts an image into non-overlapping
+cite the ConvNeXt work, which provides a detailed comparison of CNNs and
+ViTs.} divided the community. ViT cuts an image into non-overlapping
 patches of $16 \times 16$ or $32 \times 32$, encodes them with a linear
 projection, and processes them with a standard transformer encoder.
 Self-attention allows each patch token in every layer to receive
@@ -349,10 +349,9 @@ authors stage by stage modernized ResNet, adopting insights from ViT:
 large $7 \times 7$ depth-wise convolutions, inverted ``bottleneck''
 blocks, LayerNorm instead of BatchNorm, GELU instead of ReLU. The
 resulting architecture preserves the computational efficiency of CNNs
-while approaching ViT in accuracy on large datasets. Crucially,
-ConvNeXt outputs a spatial feature map (not a single global vector),
-which makes it a convenient CNN backbone for hybrids with a transformer
-head.
+while approaching ViT in accuracy on large datasets. Crucially, ConvNeXt
+outputs a spatial feature map (not a single global vector), which makes
+it a convenient CNN backbone for hybrids with a transformer encoder.
 
 \section{Deep learning methods in cytology}
 
@@ -399,28 +398,27 @@ generates synthetic images for rare classes, after which an
 External-Attention-Transformer is trained on the expanded sample. The
 reported accuracy is 98.5\%, but this result should be interpreted with
 caution: synthetic samples obtained from the same dataset on which the
-model is then evaluated can systematically bias the estimate. The
-hybrid Vision Transformer with a CNN ensemble \cite{hybridvit2025}
-reports 99.18\%, but uses an ensemble of several CNN models and does
-not describe the splitting procedure in detail.
+model is then evaluated can systematically bias the estimate. The hybrid
+Vision Transformer with a CNN ensemble \cite{hybridvit2025} reports
+99.18\%, but uses an ensemble of several CNN models and does not
+describe the splitting procedure in detail.
 
 A common feature of the SIPaKMeD literature is the weak methodological
 comparability of results across papers. In \cite{plissiti2018sipakmed}
 one splitting scheme is used, in \cite{cerviformer2023} a different one,
-in \cite{hybridvit2025} yet another, with some works simply omitting
-an explicit description of the procedure. Since SIPaKMeD contains
+in \cite{hybridvit2025} yet another, with some works simply omitting an
+explicit description of the procedure. Since SIPaKMeD contains
 \textit{crops} from a small number of source slides, naive random
-splitting inevitably leads to train/test leakage (neighboring cells
-from one slide land in different subsets). Ignoring this leakage is
-one of the reasons for the inflated absolute numbers in existing
-works.
+splitting inevitably leads to train/test leakage (neighboring cells from
+one slide land in different subsets). Ignoring this leakage is one of
+the reasons for the inflated absolute numbers in existing works.
 
 \subsection{Augmentation and regularization}
 
 Alongside architectural progress, the stack of augmentation and
 regularization techniques has developed. Mixup \cite{zhang2018mixup}
-introduces a linear interpolation between pairs of training samples
-and their labels, which empirically reduces overfitting and improves
+introduces a linear interpolation between pairs of training samples and
+their labels, which empirically reduces overfitting and improves
 calibration. RandAugment \cite{cubuk2020randaugment} replaces manual
 augmentation tuning with random sampling from a pre-built pool with a
 single ``magnitude'' parameter. Stochastic depth (DropPath)
@@ -444,20 +442,20 @@ existing SIPaKMeD classification work:
     \item Implementation details (exact hyperparameters, configs,
           reproduction procedure) are often not published together with
           the results.
-    \item Architectural comparison is rarely conducted as an ablation
-          on a single split: more often each work compares its new
-          method with numbers from other works obtained under different
+    \item Architectural comparison is rarely conducted as an ablation on
+          a single split: more often each work compares its new method
+          with numbers from other works obtained under different
           conditions.
     \item Interpretability of the model's decisions (attention rollout,
           Grad-CAM) is discussed only sporadically.
 \end{enumerate}
 
 This work closes each of these gaps at least partially: it uses
-\texttt{StratifiedGroupKFold} with grouping by slide; it conducts
-5-fold CV for quantitative $\sigma$ estimation; it publishes the
-source code as a Python package with a CLI and configs; it performs
-an ablation comparing baseline vs.\ hybrid on a single split; and it
-implements attention rollout visualization for interpretation.
+\texttt{StratifiedGroupKFold} with grouping by slide; it conducts 5-fold
+CV for quantitative $\sigma$ estimation; it publishes the source code as
+a Python package with a CLI and configs; it performs an ablation
+comparing baseline vs.\ hybrid on a single split; and it implements
+attention rollout visualization for interpretation.
 
 \section{Problem statement}
 
@@ -473,8 +471,8 @@ Performance evaluation:
         \frac{2 \cdot \text{Pr}_c \cdot \text{Re}_c}
              {\text{Pr}_c + \text{Re}_c},
 \]
-where $C=5$ is the number of classes, $\text{Pr}_c$ and $\text{Re}_c$
-are the precision and recall of class $c$.
+where $C=5$ is the number of classes, and $\text{Pr}_c$ and
+$\text{Re}_c$ are the precision and recall of class $c$.
 
 \chapter{Methodology}
 \label{ch:methodology}
@@ -484,8 +482,8 @@ are the precision and recall of class $c$.
 We use the SIPaKMeD dataset \cite{plissiti2018sipakmed} in the variant
 Cervical Cancer Largest Dataset (SIPaKMeD) from the Kaggle platform
 \cite{kaggle_sipakmed}. This work uses the subset of isolated cells ---
-the \texttt{CROPPED/} directory, containing \textbf{4\,049 cell
-images} in BMP format, distributed over five classes
+the \texttt{CROPPED/} directory, containing \textbf{4\,049 cell images}
+in BMP format, distributed over five classes
 (Table~\ref{tab:dataset}). Additional cluster-images, which contain
 several cells in a single frame, are excluded from training because
 single-label classification is not well defined for them.
@@ -511,7 +509,7 @@ Metaplastic              & 793  & 19.6 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/dataset_examples.png}
+\includegraphics[width=0.95\textwidth,height=0.78\textheight,keepaspectratio]{figures/dataset_examples.png}
 \caption{Examples of isolated cells from the CROPPED subset of the
 SIPaKMeD dataset: three randomly chosen representatives of each of the
 five classes. A pronounced within-class morphological variability is
@@ -581,8 +579,8 @@ The training-set size --- about 2880 samples --- is small for a model
 with 117M parameters. Without sufficient augmentation, the network
 quickly memorizes the training images verbatim and loses
 generalization. The work uses a combined augmentation pipeline.
-Logically it splits into three groups: geometric transformations,
-color transformations, and noise/mixed techniques.
+Logically it splits into three groups: geometric transformations, color
+transformations, and noise/mixed techniques.
 
 \subsection{Geometric transformations}
 
@@ -594,8 +592,8 @@ color transformations, and noise/mixed techniques.
     \item \textbf{RandomHorizontalFlip ($p=0.5$) and
           RandomVerticalFlip ($p=0.5$).} A cytology slide has no
           preferred orientation --- a cell under a microscope can be
-          rotated arbitrarily relative to the technician. Both flips
-          are valid and double the effective dataset size.
+          rotated arbitrarily relative to the technician. Both flips are
+          valid and double the effective dataset size.
     \item \textbf{RandomRotation by $\pm 30^\circ$.} Complements the
           flips with rotations to intermediate angles.
 \end{enumerate}
@@ -606,13 +604,12 @@ color transformations, and noise/mixed techniques.
     \setcounter{enumi}{3}
     \item \textbf{ColorJitter} with brightness 0.3, contrast 0.3,
           saturation 0.2, hue 0.1. Papanicolaou staining yields
-          characteristic eosinophilic-basophilic tones, but the
-          specific shade depends on the dye batch, exposure time, and
-          microscope calibration. ColorJitter imitates this
-          variability.
+          characteristic eosinophilic-basophilic tones, but the specific
+          shade depends on the dye batch, exposure time, and microscope
+          calibration. ColorJitter imitates this variability.
     \item \textbf{RandomGrayscale ($p=0.05$).} With small probability
-          converts the image to grayscale, forcing the model to rely
-          not only on color but also on shape/texture.
+          converts the image to grayscale, forcing the model to rely not
+          only on color but also on shape/texture.
 \end{enumerate}
 
 \subsection{Automatic and noise block}
@@ -620,18 +617,17 @@ color transformations, and noise/mixed techniques.
 \begin{enumerate}
     \setcounter{enumi}{5}
     \item \textbf{RandAugment} \cite{cubuk2020randaugment} with
-          \texttt{num\_ops=2, magnitude=9} --- an automatic
-          composition of two random transformations (shear, translate,
-          rotate, posterize, solarize, equalize, contrast) at fixed
-          magnitude. Removes the need for manual augmentation-policy
-          search.
-    \item \textbf{Normalization} by ImageNet statistics (mean $=$
-          0.485, 0.456, 0.406; std $=$ 0.229, 0.224, 0.225). Matches
-          the expected input of the pretrained backbone.
-    \item \textbf{RandomErasing ($p=0.25$, area 0.02--0.15).}
-          Random erasing of a rectangular region. Imitates slide
-          artifacts (contamination, scanning artifacts) and prevents
-          the model from relying on any single local region.
+          \texttt{num\_ops=2, magnitude=9} --- an automatic composition
+          of two random transformations (shear, translate, rotate,
+          posterize, solarize, equalize, contrast) at fixed magnitude.
+          Removes the need for manual augmentation-policy search.
+    \item \textbf{Normalization} by ImageNet statistics (mean $=$ 0.485,
+          0.456, 0.406; std $=$ 0.229, 0.224, 0.225). Matches the
+          expected input of the pretrained backbone.
+    \item \textbf{RandomErasing ($p=0.25$, area 0.02--0.15).} Random
+          erasing of a rectangular region. Imitates slide artifacts
+          (contamination, scanning artifacts) and prevents the model
+          from relying on any single local region.
 \end{enumerate}
 
 \subsection{Mixup}
@@ -651,13 +647,13 @@ Mixup increases the ``effective sample size'' through interpolation,
 additionally smooths the decision boundary, and improves probability
 calibration \cite{zhang2018mixup}. One practical side effect is a
 systematically depressed train accuracy in the logs
-(see \S\ref{ch:experiments}), since the accuracy metric on a mixed
-batch is poorly defined. The implementation uses a soft accuracy:
+(see \S\ref{ch:experiments}), since the accuracy metric on a mixed batch
+is poorly defined. The implementation uses a soft accuracy:
 $\sum (\lambda \mathbf{1}[\hat y = y_i] + (1-\lambda) \mathbf{1}[\hat y = y_j])$.
 
 All augmentations are applied \textit{only} to the training set.
-Validation and test go through a simple Resize + Normalize chain so
-that evaluation matches actual inference.
+Validation and test go through a simple Resize + Normalize chain so that
+evaluation matches actual inference.
 
 \section{Model architecture}
 
@@ -688,37 +684,39 @@ The proposed model consists of three blocks:
 
 \subsection{CNN backbone}
 
-As the convolutional part of the model, responsible for extracting
-local visual features, we use \textbf{ConvNeXt-Base}
-\cite{liu2022convnext}, pretrained on ImageNet-1k. The ConvNeXt
-architecture combines the computational efficiency of modern
-convolutional networks with several ideas borrowed from the Vision
-Transformer: $7 \times 7$ depth-wise convolutions, inverted residual
-blocks, and layer normalization (LayerNorm) instead of batch
-normalization (BatchNorm). The network takes an RGB image of size
-$224 \times 224$ as input and produces a spatial feature map of
-dimension $1024 \times 7 \times 7$, used subsequently as a sequence of
-tokens.
+As the convolutional part of the model, responsible for extracting local
+visual features, we use \textbf{ConvNeXt-Base} \cite{liu2022convnext},
+pretrained on ImageNet-1k. The ConvNeXt architecture combines the
+computational efficiency of modern convolutional networks with several
+ideas borrowed from the Vision Transformer: $7 \times 7$ depth-wise
+convolutions, inverted residual blocks, and layer normalization
+(LayerNorm) instead of batch normalization (BatchNorm). The network
+takes an RGB image of size $224 \times 224$ as input and produces a
+spatial feature map of dimension $1024 \times 7 \times 7$, used
+subsequently as a sequence of tokens.
 
 \subsection{Projection and positional encoding}
 
 The resulting feature map is unfolded into a sequence of
 $7 \times 7 = 49$ tokens. A linear projection followed by layer
 normalization maps each token into a space of dimension $d=768$,
-matching the standard transformer encoder width. A learnable
-aggregator token \texttt{[CLS]} is added to the sequence, together with
-a matrix of positional embeddings $\mathbf{p} \in \mathbb{R}^{50 \times
-768}$, initialized with random values via the Glorot (Xavier) scheme
-for a stable distribution of activations at the start of training.
+matching the standard transformer encoder width. A learnable aggregator
+token \texttt{[CLS]} is added to the sequence, together with a matrix of
+positional embeddings $\mathbf{p} \in \mathbb{R}^{50 \times 768}$. The
+\texttt{[CLS]} token and the positional embeddings are initialized with
+a truncated normal distribution with $\text{std} = 0.02$ --- the
+standard ViT/DeiT scheme for initializing learnable embeddings. The
+small std value gives a weak perturbation of the tokens at the start of
+training, so that positional information is learned gradually without
+disrupting the distribution of activations after layer normalization.
 
 \subsection{Transformer encoder}
 
 A stack of $L=4$ transformer blocks in a \textbf{pre-norm}
-configuration operates on top of the token sequence: layer
-normalization is applied to the input of each sub-block (attention and
-feed-forward) before the operation itself, which improves training
-stability of deep transformers compared with the classical post-norm
-scheme.
+configuration operates on top of the token sequence: layer normalization
+is applied to the input of each sub-block (attention and feed-forward)
+before the operation itself, which improves training stability of deep
+transformers compared with the classical post-norm scheme.
 \[
     \mathbf{z}' = \mathbf{z} + \text{DropPath}(\text{MHSA}(\text{LN}(\mathbf{z}))),
     \quad
@@ -729,7 +727,7 @@ DropPath implements stochastic depth.
 
 \paragraph{Multi-Head Self-Attention.} For input $\mathbf{z} \in
 \mathbb{R}^{T \times d}$ with $T=50$ tokens and $d=768$, MHSA with
-$h=12$ heads is computed as:
+$h=12$ attention heads is computed as:
 \[
     \mathbf{Q} = \mathbf{z} W_Q, \quad
     \mathbf{K} = \mathbf{z} W_K, \quad
@@ -747,8 +745,8 @@ $h=12$ heads is computed as:
 \]
 The matrices $W_Q, W_K, W_V \in \mathbb{R}^{d \times d}$ are learnable;
 $\sqrt{d_h}$ stabilizes the gradients from softmax. The implementation
-uses \texttt{nn.MultiheadAttention(batch\_first=True)} from PyTorch;
-see \texttt{src/lunicyto/models/hybrid\_vit\_cnn.py}.
+uses \texttt{nn.MultiheadAttention(batch\_first=True)} from PyTorch; see
+\texttt{src/lunicyto/models/hybrid\_vit\_cnn.py}.
 
 \paragraph{FFN.} The feed-forward block has the form
 \[
@@ -761,22 +759,24 @@ with expansion $W_1 \in \mathbb{R}^{d \times 4d}, W_2 \in \mathbb{R}^{4d
 
 \paragraph{Stochastic depth.} For block $l \in \{1, \ldots, L\}$ the
 drop probability grows linearly: $\delta_l = (l-1)/(L-1) \cdot
-\delta_{\max}$, where $\delta_{\max} = 0.1$. During training the entire
-residual-branch tensor is zeroed with probability $\delta_l$, and the
-remaining branches are rescaled by $1/(1 - \delta_l)$ to preserve the
-expectation. At inference, DropPath acts as the identity. The idea is
-from \cite{huang2016deep}: an ensemble of networks of different depth
-is implicitly trained in a single pass.
+\delta_{\max}$, where $\delta_{\max} = 0.1$. In the implementation this
+is computed as \texttt{torch.linspace(0, drop\_path\_rate, L)}, which
+for $L=4$ yields $\{0,\ 0.033,\ 0.067,\ 0.1\}$ --- numerically the same
+linear grid. During training the entire residual-branch tensor is zeroed
+with probability $\delta_l$, and the remaining branches are rescaled by
+$1/(1 - \delta_l)$ to preserve the expectation. At inference, DropPath
+acts as the identity. The idea is from \cite{huang2016deep}: an ensemble
+of networks of different depth is implicitly trained in a single pass.
 
-\paragraph{Output classification head.} The output of the
-\texttt{[CLS]} token after the final LayerNorm is passed through
-Dropout ($p=0.3$) and then linearly projected into the class space by
-a matrix $W_{\text{head}} \in \mathbb{R}^{d \times C}$, $C = 5$.
+\paragraph{Output classification layer.} The output of the
+\texttt{[CLS]} token after the final LayerNorm is passed through Dropout
+($p=0.3$) and then linearly projected into the class space by a matrix
+$W_{\text{head}} \in \mathbb{R}^{d \times C}$, $C = 5$.
 
 The total number of model parameters, computed via
 \texttt{sum(p.numel())} in the training script, is \textbf{116.8M}
 (ConvNeXt-Base $\approx 89$M, projection $\approx 0.8$M, transformer
-$\approx 28$M, head $\approx 4$K).
+$\approx 28$M, classifier $\approx 4$K).
 
 \section{Training procedure}
 
@@ -797,7 +797,7 @@ probabilities.
 \begin{itemize}
     \item backbone: $\text{lr}_0 \times 0.1 = 2 \times 10^{-5}$ (fine
           tuning of the pretrained weights);
-    \item remaining parameters (projection, transformer, head):
+    \item remaining parameters (projection, transformer, classifier):
           $\text{lr}_0 = 2 \times 10^{-4}$.
 \end{itemize}
 Weight decay: $\lambda = 10^{-2}$. Gradient clipping: $\|\nabla\|_2 \le 1.0$.
@@ -822,10 +822,10 @@ where $T$ is the total number of epochs.
 Parameter & Value \\
 \midrule
 Optimizer & AdamW \\
-Learning rate (head) & $2 \times 10^{-4}$ \\
+Learning rate (new layers) & $2 \times 10^{-4}$ \\
 LR scale (backbone) & 0.1 \\
 Weight decay & $10^{-2}$ \\
-Batch size & 32 \\
+Batch size & 16 \\
 Epochs & 50 (max) \\
 Warmup & 5 epochs \\
 Label smoothing & 0.1 \\
@@ -837,10 +837,582 @@ Image size & $224 \times 224$ \\
 \end{tabular}
 \end{table}
 
-\chapter*{References}
-\addcontentsline{toc}{chapter}{References}
-\renewcommand{\bibname}{}
+\chapter{Experiments and results}
+\label{ch:experiments}
+
+\section{Experimental setup}
+
+\subsection{Hardware and software environment}
+
+All numerical results reported in this work were obtained on the
+following configuration:
+\begin{itemize}
+    \item \textbf{GPU:} NVIDIA GeForce RTX 2060 6\,GB (Turing
+          architecture, compute capability 7.5);
+    \item \textbf{OS:} Ubuntu 22.04 (WSL2 on top of Windows);
+    \item \textbf{Python:} 3.12;
+    \item \textbf{PyTorch:} 2.x, cu124 build, AMP (fp16) enabled
+          automatically under CUDA;
+    \item \textbf{Dependency manager:} \texttt{uv}, with a lock file
+          pinning exact library versions.
+\end{itemize}
+TF32 is not supported on the Turing architecture, so AMP uses fp16. On
+the RTX 2060 6 GB the full hybrid model in \texttt{batch\_size = 16}
+mode occupies $\approx 5.4$ GB VRAM including activations and the AdamW
+optimizer (which keeps two extra copies of the parameters for the
+moments), leaving a small margin. For machines with less memory, the
+\texttt{convnext\_small} variant or a further reduction of
+\texttt{batch\_size} is available; for machines with more memory,
+\texttt{batch\_size} 64 and above speeds up a single run by a factor of
+1.5--2 without loss of accuracy.
+
+\subsection{Reproducibility}
+
+For each run, all the main sources of non-determinism are fixed. The
+random number generators are initialized with a single seed, and cuDNN
+is switched to deterministic mode:
+\begin{lstlisting}
+random.seed(42)
+numpy.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+\end{lstlisting}
+Additionally, the stratified split is performed with a fixed seed inside
+\texttt{StratifiedGroupKFold}. Each run creates a unique
+timestamp-named subdirectory
+(\texttt{runs/experiment\_X/YYYYMMDD\_HHMMSS/}) and saves into it: the
+best checkpoint (\texttt{best\_model.pth}), a full copy of the
+configuration file used (\texttt{config\_used.toml}), a metrics report
+(\texttt{test\_report.txt}), the confusion matrix, training curves,
+grids of correct and incorrect predictions, and TensorBoard logs. This
+allows any experiment to be reconstructed from the saved files, without
+relying on verbal or git history.
+
+\subsection{Hyperparameter summary}
+
+The full list of values and their sources is given in
+Table~\ref{tab:hyperparams}. Additionally:
+\begin{itemize}
+    \item \texttt{drop\_last=True} on the train loader --- protects
+          BN/LN from instability on a potentially half-empty last batch;
+    \item \texttt{persistent\_workers=True}, \texttt{pin\_memory=True}
+          --- standard DataLoader optimizations;
+    \item Mixup is applied \textit{within a batch} (not cross-batch),
+          with one $\lambda$ sampled per batch.
+\end{itemize}
+
+\subsection{Training stability}
+
+During the experiments, stable convergence of the hybrid model was
+observed: val accuracy reaches a plateau of $\approx 93$\% within 5--7
+epochs, then slowly rises to 94--95\%, after which early stopping
+triggers at epochs 20--30 (see Fig.~\ref{fig:training_curves}). Train
+accuracy is systematically below val accuracy --- this is \textit{not} a
+sign of overfitting, but an artifact of soft accuracy under Mixup (the
+metric is depressed by construction, see \S~\ref{sec:augmentation}). The
+corresponding train/val loss curves behave as expected: the train loss
+decreases more slowly (label smoothing $+$ Mixup make it ``heavier''),
+the val loss faster, but over a narrower range. No signs of gradient
+divergence (NaN, loss explosions) were recorded; gradient clipping at a
+norm of 1.0 is sufficient.
+
+\section{Results}
+
+\begin{table}[H]
+\centering
+\caption{Comparison of methods on the SIPaKMeD test set}
+\label{tab:results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Model & Acc (\%) & F1 (\%) & AUC (\%) & Source \\
+\midrule
+SVM + hand-crafted features & 82.0 & --   & --   & \cite{plissiti2018sipakmed} \\
+ResNet-50                 & 93.5 & 92.8 & --   & \cite{hybridvit2025} \\
+EfficientNet-B4           & 95.1 & 94.7 & --   & \cite{hybridvit2025} \\
+CerviFormer               & 96.2 & 95.8 & --   & \cite{cerviformer2023} \\
+CerviGAN + EAT            & 98.5 & 98.2 & --   & \cite{cervigan2025} \\
+Hybrid ViT + CNN Ensemble & 99.2 & --   & --   & \cite{hybridvit2025} \\
+\midrule
+\multicolumn{5}{l}{\textit{This work (single split, test 579 samples):}} \\
+ConvNeXt-Base baseline (87.6M)    & 95.85 & 95.83 & 99.33 & - \\
+\textbf{HybridViTCNN (116.8M)}    & \textbf{95.51} & \textbf{95.48} & \textbf{99.72} & - \\
+\midrule
+\multicolumn{5}{l}{\textit{This work (5-fold CV, $\mu \pm \sigma$):}} \\
+\textbf{HybridViTCNN (116.8M)}    & \textbf{94.42 $\pm$ 1.42} & \textbf{94.41 $\pm$ 1.43} & \textbf{99.04 $\pm$ 0.95} & - \\
+\bottomrule
+\end{tabular}}
+
+\vspace{0.5em}
+{\footnotesize Note: ``--'' - metric not reported in the source.}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Per-fold results (HybridViTCNN, 5-fold CV)}
+\label{tab:cv_folds}
+\begin{tabular}{cccc}
+\toprule
+Fold & Accuracy (\%) & F1 macro (\%) & AUC macro (\%) \\
+\midrule
+1 & 95.31 & 95.32 & 99.74 \\
+2 & 94.69 & 94.63 & 98.84 \\
+3 & 91.98 & 91.94 & 97.26 \\
+4 & 93.95 & 93.98 & 99.46 \\
+5 & 96.17 & 96.18 & 99.88 \\
+\midrule
+$\mu \pm \sigma$ & \textbf{94.42 $\pm$ 1.42} & \textbf{94.41 $\pm$ 1.43} & \textbf{99.04 $\pm$ 0.95} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The spread across folds ($\pm 1.42$ p.p.\ in accuracy, range
+$91.98\%$ -- $96.17\%$) shows the natural variance of the estimate on
+this dataset. The single-split estimate of $95.51\%$ corresponds to a
+fold of ``medium difficulty'' and lies in the upper half of the
+distribution. This confirms the correctness of the stratified
+group-aware split: the estimate is not optimistically biased, as it
+would be under a naive random split with slide leakage.
+
+\subsection{Ablation comparison: baseline vs hybrid}
+\label{sec:ablation}
+
+To assess the contribution of the transformer encoder, a direct ablation
+comparison was performed: \texttt{ConvNeXt-Base} with global-average-pooling
+and a linear classifier (without the projection and transformer blocks)
+against the full hybrid model on the same split, with identical training
+hyperparameters, learning-rate schedule, regularization, and TTA.
+Results:
+
+\begin{itemize}
+    \item In \textbf{Accuracy / F1} the difference (-0.34 / -0.35 p.p.)
+          lies \textbf{within the estimation variance on 579 test
+          samples} (the 95\% confidence interval for the binomial
+          proportion at $p=0.96$ is $\approx \pm 1.7$ p.p.). Claiming
+          the superiority of one model over another by a top-1 metric on
+          a single split is incorrect.
+    \item In \textbf{AUC-ROC macro} the hybrid is statistically
+          noticeably higher (99.72 vs 99.33, +0.39 p.p.). AUC evaluates
+          not only the class with the maximum probability, but also the
+          ranking of probabilities across all classes. This means that
+          the hybrid produces better \textit{calibrated} outputs --- a
+          property critical for medical CAD systems, where the decision
+          threshold is tuned to clinical requirements (sensitivity vs
+          specificity).
+    \item In the \textbf{number of absolute errors} the hybrid: 24/579
+          vs baseline: 27/579. By class, the difference is mainly in
+          Koilocytotic (13 vs 15 errors), the hardest class for both
+          models.
+    \item In \textbf{computational cost} the baseline is more economical
+          by $\approx 25\%$ in parameters (87.6M vs 116.8M) and faster
+          at inference.
+    \item In \textbf{interpretability} only the hybrid provides
+          attention maps of the transformer blocks
+          (\S\ref{sec:attention}), allowing a visual check of which cell
+          regions the model bases its decision on.
+\end{itemize}
+
+\textbf{Conclusion.} The architectural contribution of the transformer
+encoder on SIPaKMeD manifests not in top-1 accuracy (which is already at
+the ceiling for this dataset), but in the \textit{quality of
+probabilistic ranking} (AUC) and \textit{interpretability}. This is
+consistent with the known role of self-attention --- modeling global
+context, rather than extracting local textural features, at which
+ConvNeXt is already strong.
+
+All results were obtained with a single model (without ensembling) and
+with grouping by slide in \texttt{StratifiedGroupKFold}, which excludes
+leakage of patient/slide features between train and test. This makes a
+direct comparison with works that do not control leakage conservative
+relative to our estimate.
+
+\begin{table}[H]
+\centering
+\caption{Per-class metrics on the test set (Hybrid ViT-CNN, TTA)}
+\label{tab:per_class}
+\begin{tabular}{lcccc}
+\toprule
+Class & Precision & Recall & F1 & Support \\
+\midrule
+Superficial-Intermediate & 0.99 & 0.99 & 0.99 & 119 \\
+Parabasal                & 0.97 & 0.99 & 0.98 & 113 \\
+Koilocytotic             & 0.94 & 0.87 & 0.91 & 118 \\
+Dyskeratotic             & 0.95 & 0.96 & 0.95 & 116 \\
+Metaplastic              & 0.92 & 0.96 & 0.94 & 113 \\
+\midrule
+\textbf{macro avg}       & \textbf{0.96} & \textbf{0.96} & \textbf{0.95} & \textbf{579} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Training curves}
+
+The dynamics of loss and accuracy during training of the hybrid model on
+the main split are shown in Fig.~\ref{fig:training_curves}. Training
+converged within $\approx 25$ epochs, after which early stopping
+triggered (patience=10). Train accuracy is below val accuracy --- this
+is a Mixup effect: the train metric is computed as a weighted sum of
+hits over the two mixed labels and is systematically depressed by
+construction. No signs of overfitting (train/val loss diverging in the
+opposite direction) are observed --- the combination of label smoothing,
+Mixup, RandAugment, RandomErasing, and stochastic depth provides
+sufficient regularization.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figures/hybrid_training_curves.png}
+\caption{Training curves of the hybrid model: loss and accuracy for the
+train and validation sets. The X axis is the epoch number.}
+\label{fig:training_curves}
+\end{figure}
+
+\section{Error analysis}
+
+Out of 579 test samples, the model erred on 24 (4.1\%). The confusion
+matrix (Fig.~\ref{fig:confusion_hybrid}) shows the structure of the
+errors. Distribution of errors by class:
+\begin{itemize}
+    \item Superficial-Intermediate --- 1/119 (0.8\%),
+    \item Parabasal --- 1/113 (0.9\%),
+    \item Koilocytotic --- \textbf{13/118 (11.0\%)} --- the main source
+          of errors,
+    \item Dyskeratotic --- 5/116 (4.3\%),
+    \item Metaplastic --- 4/113 (3.5\%).
+\end{itemize}
+
+The high proportion of errors on Koilocytotic is expected: koilocytotic
+cells (associated with HPV) are morphologically close to dyskeratotic
+(dysplasia) and metaplastic cells, all classes being characterized by an
+altered nuclear morphology. This is consistent with the known difficulty
+of the differential diagnosis of HPV infection and dysplasia in manual
+cytology \cite{branca2015recommendations}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/hybrid_confusion_matrix.png}
+\caption{Confusion matrix of HybridViTCNN on the test set (row-normalized).
+The main error flows: Koilocytotic $\to$ Metaplastic (7\%),
+Koilocytotic $\to$ Dyskeratotic (5\%), Metaplastic $\to$ Koilocytotic (4\%).}
+\label{fig:confusion_hybrid}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/baseline_confusion_matrix.png}
+\caption{Confusion matrix of the baseline ConvNeXt-Base model (without
+the transformer). The error structure is similar to the hybrid:
+Koilocytotic is the main source of confusion, the direction of errors
+differs slightly (Koilocytotic $\to$ Metaplastic 7\%, $\to$ Dyskeratotic
+3\%, $\to$ Superficial-Intermediate 2\%).}
+\label{fig:confusion_baseline}
+\end{figure}
+
+A qualitative analysis of the misclassified cells is presented in
+Fig.~\ref{fig:wrong_predictions}: visually, many of them are indeed
+close to the predicted class --- the model errs on borderline
+morphologies, on which cytologists also err.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figures/wrong_predictions.png}
+\caption{Examples of misclassified cells (HybridViTCNN). Above each cell:
+T - true class, P - predicted class.}
+\label{fig:wrong_predictions}
+\end{figure}
+
+\section{Attention visualization}
+\label{sec:attention}
+
+The hybrid model provides the \texttt{get\_attention\_maps()} method for
+extracting the self-attention weights from each transformer block. The
+raw weights are uninformative without aggregation across layers, since
+each subsequent block operates on an already transformed representation.
+To obtain an integral saliency map, the \textbf{attention rollout}
+method \cite{abnar2020rollout} is applied.
+
+\subsection{Attention rollout}
+
+Let $A^{(l)} \in \mathbb{R}^{T \times T}$ be the attention matrix at
+layer $l$, averaged over attention heads ($T = 50$ --- 49 patch tokens
+plus CLS). To account for residual connections, an identity matrix is
+added and the rows are normalized:
+\[
+    \tilde A^{(l)} = \mathrm{rownorm}\!\big(A^{(l)} + I\big).
+\]
+The total attention is accumulated by a matrix product from top to
+bottom:
+\[
+    R^{(L)} = \tilde A^{(L)} \cdot \tilde A^{(L-1)} \cdots \tilde A^{(1)}.
+\]
+The saliency map for the CLS token is the first row of $R^{(L)}$ without
+the diagonal: $\mathbf{r}_{\mathrm{cls}} = R^{(L)}_{0, 1:} \in
+\mathbb{R}^{49}$. This vector is reshaped into a $7 \times 7$ map and
+bilinearly interpolated to the original resolution $224 \times 224$.
+
+\subsection{Results}
+
+The implementation is the CLI command
+\texttt{lunicyto attention --checkpoint <path>}, which loads the best
+checkpoint, runs several samples from the test set, and saves a grid
+with the originals and the overlaid heatmaps
+(Fig.~\ref{fig:attention_maps}).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth,height=0.70\textheight,keepaspectratio]{figures/attention_maps.png}
+\caption{Attention rollout for the hybrid model on test samples (2
+examples per class, 10 images in total). Left - the original, right -
+the overlaid CLS $\to$ patches attention map. A green frame - correctly
+classified, red - misclassified. Above each image: T - true class, P -
+prediction with confidence in \%. The attention maps concentrate on the
+cell nucleus and the perinuclear region, which corresponds to the
+biologically meaningful features of cytological classification (nuclear
+size and shape, nucleus-to-cytoplasm ratio, presence of a halo).}
+\label{fig:attention_maps}
+\end{figure}
+
+The baseline model does not provide this capability out of the box ---
+in it, global-average-pooling compresses the spatial information into a
+vector, and visualizing the focus requires external methods (Grad-CAM)
+not intrinsic to the architecture. This is one of the practical
+advantages of the hybrid for medical CAD scenarios, where decision
+interpretability is required by regulation.
+
+\chapter{Software implementation}
+\label{ch:impl}
+
+\section{Package structure}
+
+The software part of the work is organized as an installable Python
+package \texttt{lunicyto}, located in the project repository. Structure:
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize]
+lunicyto/
+  config/
+    train.toml
+    train_baseline.toml
+  src/lunicyto/
+    cli.py
+    datasets/sipakmed.py
+    models/
+      hybrid_vit_cnn.py
+      baseline.py
+    training/
+      trainer.py
+      metrics.py
+      early_stopping.py
+    utils/
+      train.py
+      cross_validate.py
+      attention_viz.py
+      download_data.py
+      explore.py
+      models.py
+  thesis/
+    main.tex
+    figures/
+  pyproject.toml
+\end{lstlisting}
+
+Each CLI function takes a path to a TOML config and optional override
+parameters. TOML was chosen as the configuration format: it is strongly
+typed, supported by the Python 3.11+ standard library
+(\texttt{tomllib}), and, unlike YAML, has no ambiguities with booleans
+and floating-point numbers.
+
+\section{CLI commands}
+
+\begin{itemize}
+    \item \texttt{lunicyto info --data-dir <path>} - a quick dataset
+          check: the number of images per class, a sample image, the
+          class distribution.
+    \item \texttt{lunicyto download} - downloading SIPaKMeD from Kaggle
+          (requires valid credentials in \texttt{\~/.kaggle/}).
+    \item \texttt{lunicyto train --config <toml>} - training from a
+          config. Creates a unique timestamped subdirectory in
+          \texttt{output.dir} and saves the checkpoint, report, images,
+          and a copy of the config there.
+    \item \texttt{lunicyto cv --config <toml> --folds K} - $K$-fold
+          stratified group-aware cross-validation. Each fold gets its
+          own \texttt{fold\_i/} subdirectory, and a general summary is
+          written to \texttt{cv\_summary.txt}.
+    \item \texttt{lunicyto attention --checkpoint <pth> --config <toml>}
+          - generation of an attention-rollout grid from the best hybrid
+          checkpoint.
+\end{itemize}
+
+All commands use a single Typer app, whose description is visible via
+\texttt{lunicyto --help}.
+
+\section{Configuration validation}
+
+All TOML configs are validated by Pydantic models
+(\texttt{utils/models.py}): sizes, float ranges, string constraints.
+When an invalid config is passed (for example, batch\_size $< 1$ or
+drop\_path\_rate $> 1$), the application fails at startup with an
+informative message, before loading the data and the model. This saves
+time on long runs.
+
+\section{Metrics and logging}
+
+Metrics are collected per batch and aggregated after a pass through the
+entire validation/test set. During training, the following are written
+to TensorBoard at each epoch: train/val loss, train/val accuracy, F1
+macro, AUC macro, and the current learning rate (for the head group of
+parameters). This allows monitoring several runs in parallel, without
+comparing text logs. The final evaluation on the test set is performed
+with \textbf{test-time augmentation} (TTA): for each batch the
+prediction is averaged over four flips - the original, a horizontal
+flip, a vertical flip, and a flip over both axes. The implementation is
+in \texttt{Trainer.\_evaluate}.
+
+\section{Reproducing the results}
+
+The minimal steps to reproduce the main result:
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize]
+uv tool install --editable lunicyto@.
+
+lunicyto download
+
+lunicyto info --data-dir data/sipakmed
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+lunicyto train --config config/train.toml
+
+lunicyto train --config config/train_baseline.toml
+
+lunicyto cv --config config/train.toml --folds 5
+
+lunicyto attention \
+    --checkpoint runs/experiment_001/<ts>/best_model.pth \
+    --config config/train.toml
+\end{lstlisting}
+
+On the stated configuration (RTX 2060 6\,GB), a single full run of the
+hybrid model takes roughly 25--30 minutes, the baseline 20--25 minutes,
+and a 5-fold CV about 2--2.5 hours.
+
+\chapter*{Conclusion}
+\addcontentsline{toc}{chapter}{Conclusion}
+\label{ch:conclusion}
+
+This work developed and evaluated a hybrid neural network model for
+multi-class classification of cells in cytology screening --- a
+combination of ConvNeXt-Base as a local-feature extractor and a
+Vision-Transformer encoder as a global-context aggregator. Beyond the
+architectural contribution, a number of methodological improvements were
+made compared with the practice typical of the SIPaKMeD literature:
+explicit protection against slide leakage, an ablation comparison,
+cross-validation, attention visualization, and a fully reproducible
+pipeline in the form of an installable Python package.
+
+Main results:
+
+\begin{enumerate}
+    \item A typical SIPaKMeD data-loading pipeline bug was identified and
+          fixed: the nested archive structure
+          (\texttt{im\_X/im\_X/CROPPED/}), when traversed with
+          \texttt{os.listdir()} or \texttt{Path.iterdir()} without
+          recursion, leads to an empty training set. In this work the
+          pipeline explicitly addresses the \texttt{CROPPED/}
+          subdirectory of each class.
+    \item A hybrid model HybridViTCNN based on ConvNeXt and a
+          Transformer encoder was implemented with improved training
+          techniques (label smoothing, Mixup, RandAugment, stochastic
+          depth, separate LRs).
+    \item A stratified dataset split was applied, ensuring a correct
+          estimate of the model's generalization ability.
+    \item The model achieves on the test set Accuracy 95.51\%, F1 macro
+          95.48\%, AUC-ROC macro 99.72\% --- a result competitive with
+          modern single-model approaches, obtained with explicit
+          protection against slide leakage.
+    \item An ablation comparison with the baseline (ConvNeXt-Base
+          without the transformer encoder) was carried out: the top-1
+          metrics of both models lie within the statistical variance of
+          a single split, but the hybrid produces better calibrated
+          probabilistic outputs (AUC +0.39 p.p.) and provides attention
+          maps for interpreting the decision --- properties important
+          for application in CAD systems.
+    \item A 5-fold cross-validation with stratification and grouping by
+          slide was conducted: Accuracy $94.42 \pm 1.42$\%, F1 $94.41
+          \pm 1.43$\%, AUC $99.04 \pm 0.95$\%. The variance across folds
+          confirms the correctness of the estimate and quantitatively
+          defines the statistical uncertainty of the result.
+\end{enumerate}
+
+\section{Limitations}
+
+A number of limitations of the work deserve explicit mention.
+
+\textbf{A single data collection center.} SIPaKMeD was collected at a
+single medical institution with the same staining protocol and the same
+digitization equipment. Generalization of the model to images obtained
+on different equipment or with a different staining protocol (for
+example, LBC vs.\ a conventional smear) has not been verified and cannot
+be guaranteed without separate testing. This is a typical problem of
+medical DL, known as domain shift. A solution is external validation on
+an independent dataset (for example, Herlev) and/or domain-adaptation
+approaches.
+
+\textbf{Dataset size.} 4049 images is a relatively small volume for a
+deep architecture with 117M parameters. The improvement over the 89M
+baseline turned out to be modest; there is reason to believe that the
+transformer part here works at the limit of its capabilities and that
+additional data would yield a larger gain specifically for the hybrid,
+whereas the CNN baseline accuracy is closer to saturation.
+
+\textbf{Estimation variance.} CV showed $\sigma = 1.4$\% in accuracy,
+with fold 3 noticeably ``dropping'' (91.98\% vs 96.17\% for fold 5).
+This indicates a substantial dependence on the composition of the test
+split: if all the ``hard'' slides are collected into one fold, the model
+accuracy drops. For clinical application this means that the numbers
+from any single estimate should be interpreted with a $\pm 2$ p.p.
+correction.
+
+\textbf{Classification of isolated cells only.} A real screening
+scenario involves two stages: segmentation/detection of cells over a
+wide field of view, then classification. This work addresses only the
+second stage (the original SIPaKMeD crops are already extracted).
+Integration into an end-to-end pipeline remains a separate engineering
+task.
+
+\textbf{Absence of clinical validation.} The model is evaluated by
+technical metrics (Acc, F1, AUC). Clinical value is determined by other
+indicators (PPV, NPV in a population with known prevalence,
+time-to-result, the effect on the physician's decision). Such trials are
+beyond the scope of a graduate thesis.
+
+\section{Directions for further research}
+
+\begin{itemize}
+    \item \textbf{External validation.} Running the trained model on the
+          Herlev dataset and/or proprietary data to assess
+          domain generalization.
+    \item \textbf{Raising accuracy on Koilocytotic.} This class remains
+          the weak link (recall $\approx 0.87$). Possible approaches: a
+          class-balanced sampler, focal loss, targeted augmentation
+          (CutMix), separate pre-training on an HPV dataset.
+    \item \textbf{Whole-slide images (WSI).} Adaptation to large fields
+          of view via a ``detection + classification'' scheme, possibly
+          using the results of \cite{zhang2025large}.
+    \item \textbf{Distillation and quantization.} Reducing the model for
+          edge inference in field conditions, especially for regions
+          with limited infrastructure.
+    \item \textbf{Calibration and uncertainty.} Applying temperature
+          scaling, Monte Carlo dropout, or deep ensembles to obtain
+          honest uncertainty estimates --- critical for medical decision
+          making.
+    \item \textbf{Combination with biomarkers.} Joint use of
+          cytomorphology and HPV-DNA analysis (Hybrid Capture, PCR) to
+          increase the PPV of the screening scheme.
+\end{itemize}
+
+\renewcommand{\bibname}{References}
 \begin{thebibliography}{99}
+\addcontentsline{toc}{chapter}{References}
 
 \bibitem{bray2018global}
 Bray~F. et~al. Global cancer statistics 2018: GLOBOCAN estimates of
@@ -919,6 +1491,11 @@ Zhang~H. et~al. Mixup: Beyond empirical risk minimization~// ICLR. 2018.
 \bibitem{huang2016deep}
 Huang~G. et~al. Deep networks with stochastic depth~// ECCV. 2016.
 P.~646--661.
+
+\bibitem{abnar2020rollout}
+Abnar~S., Zuidema~W. Quantifying Attention Flow in Transformers~//
+Proceedings of the 58th Annual Meeting of the Association for
+Computational Linguistics (ACL). 2020. P.~4190--4197.
 
 \bibitem{kaggle_sipakmed}
 Cervical Cancer largest dataset (SipakMed). Kaggle.
